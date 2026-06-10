@@ -30,6 +30,7 @@ from .google_api import (
     google_api_doctor,
     run_live_google_daily_agent,
     run_live_google_agent,
+    run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
 )
 from .litscout import evidence_rows_to_values, litscout_works_to_evidence_rows, load_litscout_export
@@ -310,6 +311,21 @@ def main(argv: list[str] | None = None) -> int:
     google_daily_agent_parser.add_argument("--report-output", help="Optional agent report JSON path.")
     google_daily_agent_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
     google_daily_agent_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
+
+    google_normalize_formulations_parser = subparsers.add_parser(
+        "google-normalize-formulations-live",
+        help="Capture a live Google Sheet, normalize formulation quantity cells, audit, and optionally apply.",
+    )
+    google_normalize_formulations_parser.add_argument("--spreadsheet-id", required=True)
+    google_normalize_formulations_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_normalize_formulations_parser.add_argument("--range", default="A1:Z1000")
+    google_normalize_formulations_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to include. Repeatable.")
+    google_normalize_formulations_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_normalize_formulations_parser.add_argument("--run-output", help="Optional full live normalization run JSON path. Defaults to stdout.")
+    google_normalize_formulations_parser.add_argument("--snapshot-output", help="Optional captured snapshot JSON path.")
+    google_normalize_formulations_parser.add_argument("--report-output", help="Optional formulation normalization report JSON path.")
+    google_normalize_formulations_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
+    google_normalize_formulations_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
 
     materialize_parser = subparsers.add_parser(
         "materialize-accepted-plans",
@@ -807,6 +823,25 @@ def main(argv: list[str] | None = None) -> int:
             report_output=args.report_output,
             audit_output=args.audit_output,
             batch_output=args.batch_output,
+        )
+        return 0
+    if args.command == "google-normalize-formulations-live":
+        client = build_google_client(args.service_account_file)
+        run = run_live_google_formulation_normalization(
+            args.spreadsheet_id,
+            client,
+            experiment_ids=tuple(args.experiment_id),
+            value_range=args.range,
+            apply=args.apply,
+        )
+        write_live_run_outputs(
+            run,
+            run_output=args.run_output,
+            snapshot_output=args.snapshot_output,
+            report_output=args.report_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+            report_key="formulation_normalization_report",
         )
         return 0
     if args.command == "google-materialize-live":

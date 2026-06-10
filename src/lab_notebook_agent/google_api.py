@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from .agent import AgentRunConfig, build_agent_report
 from .daily_agent import build_snapshot_daily_agent_run
+from .formulation_normalization import build_formulation_normalization_report
 from .google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
@@ -244,6 +245,45 @@ def run_live_google_plan_materialization(
         "snapshot": snapshot,
         "snapshot_audit": snapshot_audit,
         "materialization_report": report,
+        "apply_audit": apply_audit,
+        "batch_update_requests": requests,
+        "batch_update_response": response,
+    }
+
+
+def run_live_google_formulation_normalization(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    experiment_ids: tuple[str, ...] = (),
+    value_range: str = "A1:Z1000",
+    apply: bool = False,
+) -> dict[str, Any]:
+    snapshot = capture_snapshot_from_google_sheets(spreadsheet_id, client, value_range=value_range)
+    snapshot_audit = validate_snapshot(snapshot, require_sheet_ids=False)
+    if snapshot_audit["valid"]:
+        report = build_formulation_normalization_report(
+            snapshot_to_tables(snapshot),
+            experiment_ids=experiment_ids,
+        )
+    else:
+        report = {
+            "schema": "lab-notebook-agent-formulation-normalization.v1",
+            "selection": {
+                "requested_experiment_ids": list(experiment_ids),
+            },
+            "summary": {},
+            "runs": [],
+        }
+    apply_audit = audit_report_against_snapshot(report, snapshot, require_sheet_ids=True)
+    requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot)) if apply_audit["valid"] else []
+    response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}
+    return {
+        "schema": "lab-notebook-agent-live-google-formulation-normalization.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "applied": bool(apply and requests),
+        "snapshot": snapshot,
+        "snapshot_audit": snapshot_audit,
+        "formulation_normalization_report": report,
         "apply_audit": apply_audit,
         "batch_update_requests": requests,
         "batch_update_response": response,

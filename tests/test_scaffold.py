@@ -38,6 +38,7 @@ from lab_notebook_agent.google_api import (
     google_api_doctor,
     run_live_google_daily_agent,
     run_live_google_agent,
+    run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
 )
 from lab_notebook_agent.cli import parse_sheet_id_args
@@ -965,6 +966,39 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
             self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])
+            self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_formulation_normalization_applies_valid_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            workbook["Master Reagents"]["F2"] = "156.18"
+            workbook["Master Reagents"]["G2"] = "1.05"
+            workbook["Formulations"]["E2"] = "10"
+            workbook.save(workbook_path)
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {"Formulations": 103},
+                )
+            )
+            run = run_live_google_formulation_normalization(
+                "spreadsheet-123",
+                client,
+                experiment_ids=("EP-001",),
+                apply=True,
+            )
+            self.assertTrue(run["applied"])
+            self.assertEqual(
+                "lab-notebook-agent-formulation-normalization.v1",
+                run["formulation_normalization_report"]["schema"],
+            )
+            self.assertEqual(2, run["formulation_normalization_report"]["summary"]["formulation_cells_to_update"])
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(2, len(run["batch_update_requests"]))
+            self.assertEqual(103, run["batch_update_requests"][0]["updateCells"]["start"]["sheetId"])
+            self.assertEqual(5, run["batch_update_requests"][0]["updateCells"]["start"]["columnIndex"])
+            self.assertEqual(6, run["batch_update_requests"][1]["updateCells"]["start"]["columnIndex"])
             self.assertEqual(1, len(client.batch_updates))
 
     def test_live_google_plan_materialization_applies_valid_batch_with_fake_client(self) -> None:

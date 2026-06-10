@@ -364,6 +364,19 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --batch-output artifacts/live-google-agent-batch.json
 ```
 
+Normalize formulation quantity cells directly against the live sheet with the
+same capture, audit, and optional apply flow:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-formulations-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --experiment-id EP-001 \
+  --snapshot-output artifacts/live-google-formulation-snapshot.json \
+  --report-output artifacts/live-google-formulation-normalization.json \
+  --audit-output artifacts/live-google-formulation-audit.json \
+  --batch-output artifacts/live-google-formulation-batch.json
+```
+
 For a one-command daily review against the live sheet, use the daily live
 runner:
 

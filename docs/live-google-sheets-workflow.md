@@ -78,6 +78,18 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-daily-agent-run-live \
   --batch-output artifacts/live-google-agent-batch.json
 ```
 
+Formulation quantity normalization can also run directly against the live sheet:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-formulations-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --experiment-id EP-001 \
+  --snapshot-output artifacts/live-google-formulation-snapshot.json \
+  --report-output artifacts/live-google-formulation-normalization.json \
+  --audit-output artifacts/live-google-formulation-audit.json \
+  --batch-output artifacts/live-google-formulation-batch.json
+```
+
 Add `--apply` only after checking that the audit is valid. The command uses
 Application Default Credentials unless `--service-account-file path/to/key.json`
 is provided. The service account or ADC principal must have edit access to the
@@ -199,7 +211,10 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
 Proceed only if `"valid": true`, then pass
 `artifacts/live-sheet-formulation-normalization-batch.json` to the Google Sheets
 connector batch-update action. Re-capture the sheet before downstream preflight
-or daily review commands if the normalization batch was applied.
+or daily review commands if the normalization batch was applied. If local
+Google API credentials are available, the
+`google-normalize-formulations-live` command in the direct API section performs
+the capture, report, audit, and optional apply in one command.
 
 Normalize structured Daily Log measurements and common free-text measurement
 phrases into appendable `Results` rows when the operator entered measurements
