@@ -172,8 +172,9 @@ formulation quantities, Master Reagents physical properties, placeholder
 reagents, observations, Results rows, linked literature evidence, and open
 suggestions.
 
-Normalize structured Daily Log measurements into appendable `Results` rows when
-the operator entered measurements directly in Daily Log columns:
+Normalize structured Daily Log measurements and common free-text measurement
+phrases into appendable `Results` rows when the operator entered measurements
+directly in Daily Log:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \

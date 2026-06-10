@@ -538,6 +538,37 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual({"temperature", "agitation speed"}, measurement_types)
             self.assertEqual("DLS particle size", report["runs"][0]["skipped_measurements"][0]["measurement_type"])
 
+    def test_daily_log_results_extracts_measurements_from_observation_text(self) -> None:
+        report = build_daily_log_results_report(
+            {
+                "Daily Log": [
+                    {
+                        "experiment_id": "EP-TEXT",
+                        "timestamp": "2026-06-09T16:00:00",
+                        "process_stage": "test",
+                        "particle_size_nm": "510",
+                        "observation": (
+                            "DLS 510 nm after workup; conversion 76%; pH 5.8; "
+                            "solids 39%; viscosity 120 cP; coagulum mass 0.4 g."
+                        ),
+                    }
+                ],
+                "Results": [],
+            },
+            experiment_ids=("EP-TEXT",),
+        )
+        rows = report["runs"][0]["append_results"]
+        by_type = {row["measurement_type"]: row for row in rows}
+        self.assertEqual(6, report["summary"]["result_rows_to_append"])
+        self.assertEqual("510", by_type["DLS particle size"]["value"])
+        self.assertEqual("Daily Log structured field", by_type["DLS particle size"]["method"])
+        self.assertEqual("76", by_type["conversion"]["value"])
+        self.assertEqual("5.8", by_type["pH"]["value"])
+        self.assertEqual("39", by_type["solids percent"]["value"])
+        self.assertEqual("120", by_type["viscosity"]["value"])
+        self.assertEqual("0.4", by_type["coagulum mass"]["value"])
+        self.assertTrue(all("observation text" in row["method"] for name, row in by_type.items() if name != "DLS particle size"))
+
     def test_daily_log_results_apply_writes_results_rows_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

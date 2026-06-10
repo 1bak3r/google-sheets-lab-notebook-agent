@@ -120,10 +120,11 @@ measurements, linked literature evidence, and open suggestions. Use
 `--stage planning` before a run and `--stage review` when the agent should make
 a result-driven follow-up suggestion.
 
-Use `normalize-daily-log-results` to turn structured Daily Log measurements
-such as temperature, rpm, pH, solids, particle size, conversion, and viscosity
-into normalized `Results` rows. Existing matching Results values are skipped so
-the operation can be rerun safely:
+Use `normalize-daily-log-results` to turn structured Daily Log measurements and
+common free-text phrases into normalized `Results` rows. It recognizes entries
+such as temperature, rpm, pH, solids, particle size, conversion, viscosity, and
+coagulum mass. Existing matching Results values are skipped so the operation can
+be rerun safely:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \
