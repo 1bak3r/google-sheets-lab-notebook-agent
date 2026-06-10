@@ -630,7 +630,7 @@ class ScaffoldTests(unittest.TestCase):
             works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
             snapshot = snapshot_from_tables(
                 load_workbook_tables(workbook_path),
-                {"Results": 102, "Literature Evidence": 111, "Agent Suggestions": 222, "Daily Reviews": 333},
+                {"Experiments": 101, "Results": 102, "Literature Evidence": 111, "Agent Suggestions": 222, "Daily Reviews": 333},
             )
             run = build_snapshot_daily_agent_run(
                 snapshot,
@@ -641,11 +641,14 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, len(run["experiment_reviews"]))
             self.assertEqual(1, run["apply_report"]["summary"]["daily_review_rows_to_append"])
             self.assertEqual(1, run["apply_audit"]["summary"]["daily_review_rows_to_append"])
-            self.assertEqual(4, run["summary"]["apply_request_count"])
+            self.assertEqual(3, run["summary"]["experiment_cells_to_update"])
+            self.assertEqual(3, run["apply_audit"]["summary"]["experiment_cells_to_update"])
+            self.assertEqual(7, run["summary"]["apply_request_count"])
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(111, run["batch_update_requests"][1]["appendCells"]["sheetId"])
             self.assertEqual(222, run["batch_update_requests"][2]["appendCells"]["sheetId"])
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
+            self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])
 
     def test_daily_agent_apply_writes_daily_review_row_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -662,6 +665,8 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("DRV-20260609-EP001", workbook["Daily Reviews"]["A2"].value)
             self.assertEqual("2026-06-09", workbook["Daily Reviews"]["C2"].value)
             self.assertEqual("needs_attention", workbook["Daily Reviews"]["N2"].value)
+            self.assertEqual("needs_review", workbook["Experiments"]["I2"].value)
+            self.assertIn("Daily review 2026-06-09", workbook["Experiments"]["K2"].value)
 
     def test_agent_run_apply_writes_evidence_and_suggestion_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -891,9 +896,10 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("lab-notebook-agent-daily-run.v1", run["daily_agent_run"]["schema"])
             self.assertEqual(1, run["daily_summary"]["summary"]["experiment_count"])
             self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
-            self.assertEqual(4, len(run["batch_update_requests"]))
+            self.assertEqual(7, len(run["batch_update_requests"]))
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
+            self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])
             self.assertEqual(1, len(client.batch_updates))
 
     def test_live_google_plan_materialization_applies_valid_batch_with_fake_client(self) -> None:

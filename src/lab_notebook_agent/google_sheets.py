@@ -186,6 +186,7 @@ def audit_report_against_snapshot(
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
+    experiment_updates = collect_rows(report, "update_experiments")
     suggestion_updates = collect_rows(report, "update_agent_suggestions")
     for row in master_reagent_rows:
         reagent_id = str(row.get("reagent_id", ""))
@@ -215,6 +216,10 @@ def audit_report_against_snapshot(
         suggestion_id = str(update.get("suggestion_id", ""))
         if suggestion_id and not any(str(existing.get("suggestion_id", "")) == suggestion_id for existing in tables.get("Agent Suggestions", [])):
             errors.append({"code": "missing_update_target", "sheet": "Agent Suggestions", "key": "suggestion_id", "value": suggestion_id})
+    for update in experiment_updates:
+        experiment_id = str(update.get("experiment_id", "") or update.get("key_value", ""))
+        if experiment_id and not any(str(existing.get("experiment_id", "")) == experiment_id for existing in tables.get("Experiments", [])):
+            errors.append({"code": "missing_update_target", "sheet": "Experiments", "key": "experiment_id", "value": experiment_id})
     for row in experiment_rows:
         experiment_id = str(row.get("experiment_id", ""))
         if experiment_id and any(str(existing.get("experiment_id", "")) == experiment_id for existing in tables.get("Experiments", [])):
@@ -248,6 +253,8 @@ def audit_report_against_snapshot(
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Formulations"})
     if require_sheet_ids and experiment_rows and "Experiments" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Experiments"})
+    if require_sheet_ids and experiment_updates and "Experiments" not in sheet_ids:
+        errors.append({"code": "missing_apply_sheet_id", "sheet": "Experiments"})
     if require_sheet_ids and result_rows and "Results" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Results"})
     if require_sheet_ids and daily_review_rows and "Daily Reviews" not in sheet_ids:
@@ -264,6 +271,7 @@ def audit_report_against_snapshot(
             "suggestion_rows_to_append": len(suggestion_rows),
             "suggestion_rows_to_update": len(suggestion_updates),
             "experiment_rows_to_append": len(experiment_rows),
+            "experiment_cells_to_update": len(experiment_updates),
             "result_rows_to_append": len(result_rows),
             "daily_review_rows_to_append": len(daily_review_rows),
             "request_count": len(batch_update_requests_from_report(report, sheet_ids)) if not errors else 0,
@@ -286,6 +294,7 @@ def batch_update_requests_from_report(
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
+    experiment_updates = collect_rows(report, "update_experiments")
     suggestion_updates = collect_rows(report, "update_agent_suggestions")
     if master_reagent_rows:
         requests.append(append_cells_request("Master Reagents", master_reagent_rows, sheet_ids))
@@ -301,6 +310,8 @@ def batch_update_requests_from_report(
         requests.append(append_cells_request("Agent Suggestions", suggestion_rows, sheet_ids))
     if daily_review_rows:
         requests.append(append_cells_request("Daily Reviews", daily_review_rows, sheet_ids))
+    for update in experiment_updates:
+        requests.append(update_cell_request("Experiments", update, sheet_ids))
     for update in suggestion_updates:
         requests.append(update_cell_request("Agent Suggestions", update, sheet_ids))
     return requests

@@ -9,10 +9,10 @@ changing the core agent logic.
 - URL: `https://docs.google.com/spreadsheets/d/1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8`
 - Append target sheet IDs:
   - `Master Reagents`: recapture from spreadsheet metadata before applying starter rows
-- `Formulations`: recapture from spreadsheet metadata before applying starter rows or accepted plans
+  - `Formulations`: recapture from spreadsheet metadata before applying starter rows or accepted plans
   - `Literature Evidence`: `1198739748`
   - `Agent Suggestions`: `89758567`
-  - `Experiments`: recapture from spreadsheet metadata before applying accepted plans
+  - `Experiments`: recapture from spreadsheet metadata before applying daily reviews or accepted plans
   - `Results`: recapture from spreadsheet metadata before applying accepted plans or daily normalized measurements
   - `Daily Reviews`: recapture from spreadsheet metadata before applying daily review rows
 
@@ -214,8 +214,9 @@ applying new rows.
 To run the daily summary and suggestion agent together, use the combined daily
 agent command. It writes pending normalized Results rows, the same read-only
 summary, per-experiment preflight checks, role-aware material search, the
-appendable agent report, a compact Daily Reviews status row, the pre-apply
-audit, and the Google Sheets `batchUpdate` payload from one snapshot:
+appendable agent report, a compact Daily Reviews status row, Experiments
+status/next-step/summary updates, the pre-apply audit, and the Google Sheets
+`batchUpdate` payload from one snapshot:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
@@ -230,10 +231,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
 ```
 
 Proceed with the batch output only if `artifacts/live-sheet-apply-audit.json`
-has `"valid": true`. The snapshot must include the `Daily Reviews` sheet ID. If
-Daily Log measurements normalize into Results, it must also include the
-`Results` sheet ID; the batch will append Results rows before Literature
-Evidence and Agent Suggestions, then append the Daily Reviews row.
+has `"valid": true`. The snapshot must include the `Experiments` and
+`Daily Reviews` sheet IDs. If Daily Log measurements normalize into Results, it
+must also include the `Results` sheet ID; the batch will append Results rows
+before Literature Evidence and Agent Suggestions, append the Daily Reviews row,
+then update the selected Experiments row.
 
 The combined run's `experiment_reviews` block can replace separate
 `experiment-preflight` and `search-materials` calls when you want one daily

@@ -16,7 +16,7 @@ from .google_sheets import (
 )
 from .material_search import build_process_material_search_report
 from .preflight import build_experiment_preflight_report
-from .sheets import load_workbook_tables
+from .sheets import load_workbook_tables, update_workbook_rows_by_key
 
 
 def build_daily_agent_run(
@@ -40,13 +40,16 @@ def build_daily_agent_run(
         experiment_ids=tuple(selected_experiment_ids(agent_report, daily_summary)),
         review_date=review_date,
     )
-    return assemble_daily_agent_run(
+    run = assemble_daily_agent_run(
         daily_summary,
         agent_report,
         config,
         experiment_reviews,
         daily_log_results_report=daily_log_results_report,
     )
+    run["update_experiments"] = build_daily_experiment_updates(tables, run)
+    run["summary"]["experiment_cells_to_update"] = len(run["update_experiments"])
+    return run
 
 
 def build_snapshot_daily_agent_run(
@@ -104,6 +107,15 @@ def run_workbook_daily_agent(
             [daily_review_row_from_run(run)],
             output_workbook=destination,
         )
+        current = destination
+        experiment_updates = run.get("update_experiments", [])
+        if experiment_updates:
+            update_workbook_rows_by_key(
+                current,
+                "Experiments",
+                experiment_updates,
+                output_path=destination,
+            )
     run["applied"] = bool(apply)
     return run
 
@@ -250,8 +262,144 @@ def build_daily_apply_report(run: dict[str, Any]) -> dict[str, Any]:
             "daily_review_rows_to_append": 1,
         },
         "append_daily_reviews": [daily_review_row_from_run(run)],
+        "update_experiments": run.get("update_experiments", []),
         "runs": runs,
     }
+
+
+def build_daily_experiment_updates(
+    tables: dict[str, list[dict[str, Any]]],
+    run: dict[str, Any],
+) -> list[dict[str, Any]]:
+    experiment_rows = [
+        row
+        for row in tables.get("Experiments", [])
+        if isinstance(row, dict)
+    ]
+    experiments_by_id = {
+        str(row.get("experiment_id", "")).strip(): (row_number, row)
+        for row_number, row in enumerate(experiment_rows, start=2)
+        if str(row.get("experiment_id", "")).strip()
+    }
+    summaries_by_id = {
+        str(row.get("experiment_id", "")).strip(): row
+        for row in run.get("daily_summary", {}).get("experiments", []) or []
+        if isinstance(row, dict) and str(row.get("experiment_id", "")).strip()
+    }
+    reviews_by_id = {
+        str(row.get("experiment_id", "")).strip(): row
+        for row in run.get("experiment_reviews", []) or []
+        if isinstance(row, dict) and str(row.get("experiment_id", "")).strip()
+    }
+
+    updates: list[dict[str, Any]] = []
+    for experiment_id in run.get("selection", {}).get("selected_experiment_ids", []) or []:
+        experiment_id = str(experiment_id).strip()
+        if experiment_id not in experiments_by_id:
+            continue
+        row_number, experiment_row = experiments_by_id[experiment_id]
+        experiment_summary = summaries_by_id.get(experiment_id, {})
+        review = reviews_by_id.get(experiment_id, {})
+        values = {
+            "status": daily_experiment_status(experiment_row, experiment_summary, review, run),
+            "planned_next_step": daily_experiment_next_step(experiment_id, review, run),
+            "summary": daily_experiment_summary_text(experiment_id, experiment_summary, review, run),
+        }
+        for field, value in values.items():
+            if not value:
+                continue
+            if str(experiment_row.get(field, "")).strip() == str(value).strip():
+                continue
+            updates.append(
+                {
+                    "sheet": "Experiments",
+                    "row_number": row_number,
+                    "experiment_id": experiment_id,
+                    "key_field": "experiment_id",
+                    "key_value": experiment_id,
+                    "field": field,
+                    "value": value,
+                }
+            )
+    return updates
+
+
+def daily_experiment_status(
+    experiment_row: dict[str, Any],
+    experiment_summary: dict[str, Any],
+    review: dict[str, Any],
+    run: dict[str, Any],
+) -> str:
+    current_status = str(experiment_row.get("status", "")).strip().lower()
+    if current_status == "abandoned":
+        return ""
+    preflight_summary = review.get("preflight", {}).get("summary", {}) if isinstance(review.get("preflight"), dict) else {}
+    if int(preflight_summary.get("fail_count", 0) or 0) > 0:
+        return "needs_review"
+    if daily_experiment_write_count(str(experiment_row.get("experiment_id", "")), run) > 0:
+        return "needs_review"
+    if int(preflight_summary.get("warn_count", 0) or 0) > 0:
+        return "needs_review"
+    if int(experiment_summary.get("observation_count", 0) or 0) or int(experiment_summary.get("result_count", 0) or 0):
+        return "complete"
+    return ""
+
+
+def daily_experiment_next_step(experiment_id: str, review: dict[str, Any], run: dict[str, Any]) -> str:
+    preflight = review.get("preflight", {}) if isinstance(review.get("preflight"), dict) else {}
+    preflight_summary = preflight.get("summary", {}) if isinstance(preflight.get("summary"), dict) else {}
+    next_actions = [str(action) for action in preflight.get("next_actions", []) or [] if str(action).strip()]
+    if int(preflight_summary.get("fail_count", 0) or 0) > 0 and next_actions:
+        return next_actions[0]
+    if daily_experiment_count(experiment_id, run, "append_agent_suggestions"):
+        return "Review draft Agent Suggestions and accept, reject, or revise the follow-up plan."
+    if daily_experiment_count(experiment_id, run, "append_results"):
+        return "Review normalized Daily Log measurements in Results."
+    if daily_experiment_count(experiment_id, run, "append_literature_evidence"):
+        return "Review appended Literature Evidence before relying on it."
+    if next_actions:
+        return next_actions[0]
+    return "Daily review complete; no new agent write actions."
+
+
+def daily_experiment_summary_text(
+    experiment_id: str,
+    experiment_summary: dict[str, Any],
+    review: dict[str, Any],
+    run: dict[str, Any],
+) -> str:
+    preflight_summary = review.get("preflight", {}).get("summary", {}) if isinstance(review.get("preflight"), dict) else {}
+    return (
+        f"Daily review {run.get('review_date', '')}: "
+        f"{experiment_summary.get('observation_count', 0)} observations; "
+        f"{experiment_summary.get('result_count', 0)} existing Results rows; "
+        f"{daily_experiment_count(experiment_id, run, 'append_results')} normalized Results pending; "
+        f"{daily_experiment_count(experiment_id, run, 'append_literature_evidence')} evidence rows pending; "
+        f"{daily_experiment_count(experiment_id, run, 'append_agent_suggestions')} suggestion rows pending; "
+        f"{preflight_summary.get('fail_count', 0)} preflight failures."
+    )
+
+
+def daily_experiment_write_count(experiment_id: str, run: dict[str, Any]) -> int:
+    return sum(
+        daily_experiment_count(experiment_id, run, key)
+        for key in ("append_results", "append_literature_evidence", "append_agent_suggestions")
+    )
+
+
+def daily_experiment_count(experiment_id: str, run: dict[str, Any], key: str) -> int:
+    total = 0
+    reports = [
+        run.get("daily_log_results_report", {}),
+        run.get("agent_report", {}),
+    ]
+    for report in reports:
+        for row in report.get("runs", []) if isinstance(report, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("experiment_id", "")).strip() == experiment_id:
+                total += len(row.get(key, []) or [])
+    return total
 
 
 def build_daily_experiment_reviews(
