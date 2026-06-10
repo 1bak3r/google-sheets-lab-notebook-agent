@@ -29,6 +29,7 @@ from .google_api import (
     capture_snapshot_from_google_sheets,
     google_api_doctor,
     run_live_google_daily_agent,
+    run_live_google_daily_log_results_normalization,
     run_live_google_agent,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
@@ -326,6 +327,22 @@ def main(argv: list[str] | None = None) -> int:
     google_normalize_formulations_parser.add_argument("--report-output", help="Optional formulation normalization report JSON path.")
     google_normalize_formulations_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
     google_normalize_formulations_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
+
+    google_normalize_daily_log_parser = subparsers.add_parser(
+        "google-normalize-daily-log-results-live",
+        help="Capture a live Google Sheet, normalize Daily Log measurements to Results, audit, and optionally apply.",
+    )
+    google_normalize_daily_log_parser.add_argument("--spreadsheet-id", required=True)
+    google_normalize_daily_log_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_normalize_daily_log_parser.add_argument("--range", default="A1:Z1000")
+    google_normalize_daily_log_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to include. Repeatable.")
+    google_normalize_daily_log_parser.add_argument("--review-date", help="Only normalize Daily Log timestamps starting with YYYY-MM-DD.")
+    google_normalize_daily_log_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_normalize_daily_log_parser.add_argument("--run-output", help="Optional full live normalization run JSON path. Defaults to stdout.")
+    google_normalize_daily_log_parser.add_argument("--snapshot-output", help="Optional captured snapshot JSON path.")
+    google_normalize_daily_log_parser.add_argument("--report-output", help="Optional Daily Log Results report JSON path.")
+    google_normalize_daily_log_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
+    google_normalize_daily_log_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
 
     materialize_parser = subparsers.add_parser(
         "materialize-accepted-plans",
@@ -842,6 +859,26 @@ def main(argv: list[str] | None = None) -> int:
             audit_output=args.audit_output,
             batch_output=args.batch_output,
             report_key="formulation_normalization_report",
+        )
+        return 0
+    if args.command == "google-normalize-daily-log-results-live":
+        client = build_google_client(args.service_account_file)
+        run = run_live_google_daily_log_results_normalization(
+            args.spreadsheet_id,
+            client,
+            experiment_ids=tuple(args.experiment_id),
+            review_date=args.review_date,
+            value_range=args.range,
+            apply=args.apply,
+        )
+        write_live_run_outputs(
+            run,
+            run_output=args.run_output,
+            snapshot_output=args.snapshot_output,
+            report_output=args.report_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+            report_key="daily_log_results_report",
         )
         return 0
     if args.command == "google-materialize-live":

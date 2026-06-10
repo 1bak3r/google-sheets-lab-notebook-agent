@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from .agent import AgentRunConfig, build_agent_report
 from .daily_agent import build_snapshot_daily_agent_run
+from .daily_log_results import build_daily_log_results_report
 from .formulation_normalization import build_formulation_normalization_report
 from .google_sheets import (
     audit_report_against_snapshot,
@@ -284,6 +285,48 @@ def run_live_google_formulation_normalization(
         "snapshot": snapshot,
         "snapshot_audit": snapshot_audit,
         "formulation_normalization_report": report,
+        "apply_audit": apply_audit,
+        "batch_update_requests": requests,
+        "batch_update_response": response,
+    }
+
+
+def run_live_google_daily_log_results_normalization(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    experiment_ids: tuple[str, ...] = (),
+    review_date: str | None = None,
+    value_range: str = "A1:Z1000",
+    apply: bool = False,
+) -> dict[str, Any]:
+    snapshot = capture_snapshot_from_google_sheets(spreadsheet_id, client, value_range=value_range)
+    snapshot_audit = validate_snapshot(snapshot, require_sheet_ids=False)
+    if snapshot_audit["valid"]:
+        report = build_daily_log_results_report(
+            snapshot_to_tables(snapshot),
+            experiment_ids=experiment_ids,
+            review_date=review_date,
+        )
+    else:
+        report = {
+            "schema": "lab-notebook-agent-daily-log-results.v1",
+            "selection": {
+                "requested_experiment_ids": list(experiment_ids),
+                "review_date": review_date or "",
+            },
+            "summary": {},
+            "runs": [],
+        }
+    apply_audit = audit_report_against_snapshot(report, snapshot, require_sheet_ids=True)
+    requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot)) if apply_audit["valid"] else []
+    response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}
+    return {
+        "schema": "lab-notebook-agent-live-google-daily-log-results-normalization.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "applied": bool(apply and requests),
+        "snapshot": snapshot,
+        "snapshot_audit": snapshot_audit,
+        "daily_log_results_report": report,
         "apply_audit": apply_audit,
         "batch_update_requests": requests,
         "batch_update_response": response,

@@ -37,6 +37,7 @@ from lab_notebook_agent.google_api import (
     capture_snapshot_from_google_sheets,
     google_api_doctor,
     run_live_google_daily_agent,
+    run_live_google_daily_log_results_normalization,
     run_live_google_agent,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
@@ -999,6 +1000,31 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(103, run["batch_update_requests"][0]["updateCells"]["start"]["sheetId"])
             self.assertEqual(5, run["batch_update_requests"][0]["updateCells"]["start"]["columnIndex"])
             self.assertEqual(6, run["batch_update_requests"][1]["updateCells"]["start"]["columnIndex"])
+            self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_daily_log_results_normalization_applies_valid_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {"Results": 102},
+                )
+            )
+            run = run_live_google_daily_log_results_normalization(
+                "spreadsheet-123",
+                client,
+                experiment_ids=("EP-001",),
+                review_date="2026-06-09",
+                apply=True,
+            )
+            self.assertTrue(run["applied"])
+            self.assertEqual("lab-notebook-agent-daily-log-results.v1", run["daily_log_results_report"]["schema"])
+            self.assertEqual(2, run["daily_log_results_report"]["summary"]["result_rows_to_append"])
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(1, len(run["batch_update_requests"]))
+            self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
+            self.assertEqual(2, len(run["batch_update_requests"][0]["appendCells"]["rows"]))
             self.assertEqual(1, len(client.batch_updates))
 
     def test_live_google_plan_materialization_applies_valid_batch_with_fake_client(self) -> None:

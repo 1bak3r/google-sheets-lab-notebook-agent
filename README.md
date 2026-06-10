@@ -377,6 +377,19 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-formulations-l
   --batch-output artifacts/live-google-formulation-batch.json
 ```
 
+Normalize Daily Log measurements directly against the live sheet when you want
+to append pending `Results` before running the daily agent:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-daily-log-results-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --review-date 2026-06-09 \
+  --snapshot-output artifacts/live-google-daily-log-snapshot.json \
+  --report-output artifacts/live-google-daily-log-results.json \
+  --audit-output artifacts/live-google-daily-log-audit.json \
+  --batch-output artifacts/live-google-daily-log-batch.json
+```
+
 For a one-command daily review against the live sheet, use the daily live
 runner:
 

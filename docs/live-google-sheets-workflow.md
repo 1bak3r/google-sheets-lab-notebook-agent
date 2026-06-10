@@ -90,6 +90,18 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-formulations-l
   --batch-output artifacts/live-google-formulation-batch.json
 ```
 
+Daily Log measurement normalization has the same direct live path:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-daily-log-results-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --review-date 2026-06-09 \
+  --snapshot-output artifacts/live-google-daily-log-snapshot.json \
+  --report-output artifacts/live-google-daily-log-results.json \
+  --audit-output artifacts/live-google-daily-log-audit.json \
+  --batch-output artifacts/live-google-daily-log-batch.json
+```
+
 Add `--apply` only after checking that the audit is valid. The command uses
 Application Default Credentials unless `--service-account-file path/to/key.json`
 is provided. The service account or ADC principal must have edit access to the
@@ -241,7 +253,10 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
 Proceed only if `"valid": true`, then pass
 `artifacts/live-sheet-daily-log-results-batch.json` to the Google Sheets
 connector batch-update action. Re-capture the sheet before running downstream
-daily review commands if this standalone normalization batch was applied.
+daily review commands if this standalone normalization batch was applied. If
+local Google API credentials are available, the
+`google-normalize-daily-log-results-live` command in the direct API section
+performs the capture, report, audit, and optional apply in one command.
 
 Generate a read-only daily notebook summary from the captured snapshot:
 
