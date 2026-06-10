@@ -20,6 +20,10 @@ from lab_notebook_agent.daily_log_results import (
     apply_daily_log_results_report_to_workbook,
     build_daily_log_results_report,
 )
+from lab_notebook_agent.formulation_normalization import (
+    apply_formulation_normalization_report_to_workbook,
+    build_formulation_normalization_report,
+)
 from lab_notebook_agent.google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
@@ -266,6 +270,67 @@ class ScaffoldTests(unittest.TestCase):
         self.assertAlmostEqual(2.1, calculation["derived"]["mass_g"], places=6)
         self.assertAlmostEqual(13.446, calculation["derived"]["moles_mmol"], places=3)
         self.assertEqual([], calculation["missing_for_calculations"])
+
+    def test_formulation_normalization_derives_missing_cells(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {"reagent_id": "M-SKA", "molecular_weight_g_mol": "156.18", "density_g_mL": "1.05"},
+            ],
+            "Formulations": [
+                {
+                    "experiment_id": "EP-001",
+                    "reagent_id": "M-SKA",
+                    "phase": "monomer feed",
+                    "target_role": "core_monomer",
+                    "mass_g": "10",
+                    "volume_mL": "",
+                    "moles_mmol": "",
+                }
+            ],
+        }
+        report = build_formulation_normalization_report(tables, experiment_ids=("EP-001",))
+        self.assertEqual("lab-notebook-agent-formulation-normalization.v1", report["schema"])
+        self.assertEqual(2, report["summary"]["formulation_cells_to_update"])
+        updates = {row["field"]: row["value"] for row in report["runs"][0]["update_formulations"]}
+        self.assertEqual("9.52381", updates["volume_mL"])
+        self.assertEqual("64.028685", updates["moles_mmol"])
+
+    def test_formulation_normalization_apply_writes_updates_to_workbook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            workbook["Master Reagents"]["F2"] = "156.18"
+            workbook["Master Reagents"]["G2"] = "1.05"
+            workbook["Formulations"]["E2"] = "10"
+            workbook.save(workbook_path)
+            output_path = Path(tmpdir) / "normalized.xlsx"
+            report = build_formulation_normalization_report(
+                load_workbook_tables(workbook_path),
+                experiment_ids=("EP-001",),
+            )
+            apply_formulation_normalization_report_to_workbook(workbook_path, report, output_path)
+            normalized = load_workbook(output_path)
+            self.assertEqual("9.52381", normalized["Formulations"]["F2"].value)
+            self.assertEqual("64.028685", normalized["Formulations"]["G2"].value)
+
+    def test_formulation_normalization_snapshot_emits_google_batch_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            workbook["Master Reagents"]["F2"] = "156.18"
+            workbook["Master Reagents"]["G2"] = "1.05"
+            workbook["Formulations"]["E2"] = "10"
+            workbook.save(workbook_path)
+            snapshot = snapshot_from_tables(load_workbook_tables(workbook_path), {"Formulations": 103})
+            report = build_formulation_normalization_report(snapshot_to_tables(snapshot), experiment_ids=("EP-001",))
+            audit = audit_report_against_snapshot(report, snapshot)
+            self.assertTrue(audit["valid"], audit["errors"])
+            self.assertEqual(2, audit["summary"]["formulation_cells_to_update"])
+            requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot))
+            self.assertEqual(2, len(requests))
+            self.assertEqual(103, requests[0]["updateCells"]["start"]["sheetId"])
+            self.assertEqual(5, requests[0]["updateCells"]["start"]["columnIndex"])
+            self.assertEqual(6, requests[1]["updateCells"]["start"]["columnIndex"])
 
     def test_suggestion_maps_to_agent_suggestions_row(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")

@@ -9,6 +9,10 @@ from .agent import AgentRunConfig, build_agent_report, run_workbook_agent
 from .daily_agent import build_snapshot_daily_agent_run, run_workbook_daily_agent
 from .daily_log_results import apply_daily_log_results_report_to_workbook, build_daily_log_results_report
 from .daily_summary import build_daily_summary_report
+from .formulation_normalization import (
+    apply_formulation_normalization_report_to_workbook,
+    build_formulation_normalization_report,
+)
 from .google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
@@ -105,6 +109,19 @@ def main(argv: list[str] | None = None) -> int:
     normalize_log_parser.add_argument("--workbook-output", help="Optional output .xlsx path for workbook apply mode. Defaults to in-place.")
     normalize_log_parser.add_argument("--report-output", help="Optional normalization report JSON path. Defaults to stdout.")
     normalize_log_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path for snapshot mode.")
+
+    normalize_formulations_parser = subparsers.add_parser(
+        "normalize-formulations",
+        help="Derive missing Formulations mass, volume, or moles from existing quantities and Master Reagents properties.",
+    )
+    normalize_formulations_source = normalize_formulations_parser.add_mutually_exclusive_group(required=True)
+    normalize_formulations_source.add_argument("--workbook", help="Lab notebook .xlsx file.")
+    normalize_formulations_source.add_argument("--snapshot", help="Google Sheets snapshot JSON file.")
+    normalize_formulations_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to include. Repeatable.")
+    normalize_formulations_parser.add_argument("--apply", action="store_true", help="Update generated Formulations cells in the workbook.")
+    normalize_formulations_parser.add_argument("--workbook-output", help="Optional output .xlsx path for workbook apply mode. Defaults to in-place.")
+    normalize_formulations_parser.add_argument("--report-output", help="Optional normalization report JSON path. Defaults to stdout.")
+    normalize_formulations_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path for snapshot mode.")
 
     daily_agent_parser = subparsers.add_parser("daily-agent-run", help="Run a daily summary plus suggestion agent in one report.")
     daily_agent_source = daily_agent_parser.add_mutually_exclusive_group(required=True)
@@ -436,6 +453,34 @@ def main(argv: list[str] | None = None) -> int:
             if not args.workbook:
                 raise SystemExit("--apply is only available with --workbook. Use --batch-output for snapshots.")
             apply_daily_log_results_report_to_workbook(
+                args.workbook,
+                report,
+                output_workbook=args.workbook_output,
+            )
+        if args.report_output:
+            write_or_print_json(report, args.report_output)
+        else:
+            print_json(report)
+        if args.batch_output:
+            if not args.snapshot:
+                raise SystemExit("--batch-output requires --snapshot so sheet IDs are available.")
+            requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot))
+            write_or_print_json(requests, args.batch_output)
+        return 0
+    if args.command == "normalize-formulations":
+        if args.workbook:
+            tables = load_workbook_tables(args.workbook)
+        else:
+            snapshot = load_sheet_snapshot(args.snapshot)
+            tables = snapshot_to_tables(snapshot)
+        report = build_formulation_normalization_report(
+            tables,
+            experiment_ids=tuple(args.experiment_id),
+        )
+        if args.apply:
+            if not args.workbook:
+                raise SystemExit("--apply is only available with --workbook. Use --batch-output for snapshots.")
+            apply_formulation_normalization_report_to_workbook(
                 args.workbook,
                 report,
                 output_workbook=args.workbook_output,

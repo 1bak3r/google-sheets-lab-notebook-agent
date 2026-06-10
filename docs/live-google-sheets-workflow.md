@@ -9,7 +9,7 @@ changing the core agent logic.
 - URL: `https://docs.google.com/spreadsheets/d/1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8`
 - Append target sheet IDs:
   - `Master Reagents`: recapture from spreadsheet metadata before applying starter rows
-  - `Formulations`: recapture from spreadsheet metadata before applying starter rows or accepted plans
+  - `Formulations`: recapture from spreadsheet metadata before applying starter rows, formulation normalization, or accepted plans
   - `Literature Evidence`: `1198739748`
   - `Agent Suggestions`: `89758567`
   - `Experiments`: recapture from spreadsheet metadata before applying daily reviews or accepted plans
@@ -125,8 +125,9 @@ Write the collected values to:
 `Literature Evidence` and `Agent Suggestions` need `sheet_id` values for the
 normal suggestion workflow. `Daily Reviews` needs a `sheet_id` value for the
 combined daily run. `Master Reagents` and `Formulations` need IDs when applying
-material starter rows. `Experiments`, `Formulations`, and `Results` need IDs
-when materializing accepted suggestions into planned follow-up rows, and
+material starter rows, and `Formulations` needs an ID when writing normalized
+formulation quantity cells. `Experiments`, `Formulations`, and `Results` need
+IDs when materializing accepted suggestions into planned follow-up rows, and
 `Results` needs an ID when appending normalized Daily Log measurements.
 
 ## 3. Validate The Snapshot
@@ -171,6 +172,34 @@ The report checks required experiment fields, expected material roles,
 formulation quantities, Master Reagents physical properties, placeholder
 reagents, observations, Results rows, linked literature evidence, and open
 suggestions.
+
+Normalize blank formulation quantity cells when the sheet already has enough
+inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or
+`moles_mmol` values from existing formulation quantities plus `Master Reagents`
+molecular weight and density fields:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --experiment-id EP-001 \
+  --report-output artifacts/live-sheet-formulation-normalization.json \
+  --batch-output artifacts/live-sheet-formulation-normalization-batch.json
+```
+
+Audit before applying:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --report artifacts/live-sheet-formulation-normalization.json \
+  --require-sheet-ids \
+  --output artifacts/live-sheet-formulation-normalization-audit.json
+```
+
+Proceed only if `"valid": true`, then pass
+`artifacts/live-sheet-formulation-normalization-batch.json` to the Google Sheets
+connector batch-update action. Re-capture the sheet before downstream preflight
+or daily review commands if the normalization batch was applied.
 
 Normalize structured Daily Log measurements and common free-text measurement
 phrases into appendable `Results` rows when the operator entered measurements

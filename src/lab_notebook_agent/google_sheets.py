@@ -183,6 +183,7 @@ def audit_report_against_snapshot(
     ]
     master_reagent_rows = collect_rows(report, "append_master_reagents")
     formulation_rows = collect_rows(report, "append_formulations")
+    formulation_updates = collect_rows(report, "update_formulations")
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
@@ -202,6 +203,21 @@ def audit_report_against_snapshot(
                     "sheet": "Formulations",
                     "key": "experiment_id,reagent_id,target_role",
                     "value": "|".join(row_key),
+                }
+            )
+    for update in formulation_updates:
+        update_key = (
+            str(update.get("experiment_id", "")).strip(),
+            str(update.get("reagent_id", "")).strip(),
+            str(update.get("target_role", "")).strip(),
+        )
+        if update_key not in existing_formulation_keys:
+            errors.append(
+                {
+                    "code": "missing_update_target",
+                    "sheet": "Formulations",
+                    "key": "experiment_id,reagent_id,target_role",
+                    "value": "|".join(update_key),
                 }
             )
     for row in evidence_rows:
@@ -251,6 +267,8 @@ def audit_report_against_snapshot(
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Master Reagents"})
     if require_sheet_ids and formulation_rows and "Formulations" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Formulations"})
+    if require_sheet_ids and formulation_updates and "Formulations" not in sheet_ids:
+        errors.append({"code": "missing_apply_sheet_id", "sheet": "Formulations"})
     if require_sheet_ids and experiment_rows and "Experiments" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Experiments"})
     if require_sheet_ids and experiment_updates and "Experiments" not in sheet_ids:
@@ -267,6 +285,7 @@ def audit_report_against_snapshot(
         "summary": {
             "master_reagent_rows_to_append": len(master_reagent_rows),
             "formulation_rows_to_append": len(formulation_rows),
+            "formulation_cells_to_update": len(formulation_updates),
             "evidence_rows_to_append": len(evidence_rows),
             "suggestion_rows_to_append": len(suggestion_rows),
             "suggestion_rows_to_update": len(suggestion_updates),
@@ -291,6 +310,7 @@ def batch_update_requests_from_report(
     ]
     master_reagent_rows = collect_rows(report, "append_master_reagents")
     formulation_rows = collect_rows(report, "append_formulations")
+    formulation_updates = collect_rows(report, "update_formulations")
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
@@ -302,6 +322,8 @@ def batch_update_requests_from_report(
         requests.append(append_cells_request("Experiments", experiment_rows, sheet_ids))
     if formulation_rows:
         requests.append(append_cells_request("Formulations", formulation_rows, sheet_ids))
+    for update in formulation_updates:
+        requests.append(update_cell_request("Formulations", update, sheet_ids))
     if result_rows:
         requests.append(append_cells_request("Results", result_rows, sheet_ids))
     if evidence_rows:

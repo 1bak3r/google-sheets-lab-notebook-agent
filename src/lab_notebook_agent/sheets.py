@@ -201,7 +201,13 @@ def update_workbook_rows_by_key(
         key_field = str(update.get("key_field", ""))
         key_value = str(update.get("key_value", ""))
         target_field = str(update.get("field", ""))
-        if key_field not in header_index or target_field not in header_index:
+        if target_field not in header_index:
+            continue
+        row_number = int(update.get("row_number", 0) or 0)
+        if row_number >= 2:
+            worksheet.cell(row=row_number, column=header_index[target_field], value=update.get("value", ""))
+            continue
+        if key_field not in header_index:
             continue
         for row_number in range(2, worksheet.max_row + 1):
             if str(worksheet.cell(row=row_number, column=header_index[key_field]).value or "") == key_value:

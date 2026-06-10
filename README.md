@@ -18,6 +18,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli search-materials --workbook art
 PYTHONPATH=src python3 -m lab_notebook_agent.cli suggest --entry examples/emulsion_polymerization_entry.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli audit-workbook --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --output artifacts/ep-001-material-audit.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli experiment-preflight --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --stage review --output artifacts/ep-001-preflight-review.json
+PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/formulation-normalization-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/daily-log-results-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary --workbook artifacts/lab_notebook_template.xlsx --review-date 2026-06-09 --output artifacts/daily-summary-2026-06-09.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run --workbook artifacts/lab_notebook_template.xlsx --review-date 2026-06-09 --litscout-export artifacts/litscout-ep-001.json --run-output artifacts/daily-agent-run-2026-06-09.json
@@ -119,6 +120,41 @@ properties, generated placeholder reagents, Daily Log observations, Results
 measurements, linked literature evidence, and open suggestions. Use
 `--stage planning` before a run and `--stage review` when the agent should make
 a result-driven follow-up suggestion.
+
+Use `normalize-formulations` after entering at least one quantitative basis in
+`Formulations` and the matching physical properties in `Master Reagents`. It
+fills blank `mass_g`, `volume_mL`, and `moles_mmol` cells when those values can
+be derived from existing mass, volume, moles, molecular weight, or density. It
+skips populated cells, so the command can be rerun safely:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --experiment-id EP-001 \
+  --report-output artifacts/formulation-normalization-ep-001.json
+```
+
+Apply generated formulation cells to a workbook copy:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --experiment-id EP-001 \
+  --apply \
+  --workbook-output artifacts/lab_notebook_formulation_normalized.xlsx \
+  --report-output artifacts/formulation-normalization-ep-001-applied.json
+```
+
+For a Google Sheets snapshot with the `Formulations` sheet ID captured, emit an
+auditable `batchUpdate` payload instead:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --experiment-id EP-001 \
+  --report-output artifacts/live-sheet-formulation-normalization.json \
+  --batch-output artifacts/live-sheet-formulation-normalization-batch.json
+```
 
 Use `normalize-daily-log-results` to turn structured Daily Log measurements and
 common free-text phrases into normalized `Results` rows. It recognizes entries
@@ -425,6 +461,10 @@ Where possible, the audit derives formulation values:
 - `volume_mL` from `mass_g` and `density_g_mL`
 - `mass_g` from `moles_mmol` and `molecular_weight_g_mol`
 
+The read-only audit reports these calculations. The `normalize-formulations`
+command uses the same calculation rules to write only blank formulation quantity
+cells, leaving operator-entered values untouched.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli audit-workbook \
   --workbook artifacts/lab_notebook_template.xlsx \
@@ -437,6 +477,6 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli audit-workbook \
 This scaffold builds the workbook contract, local recommendation loop, LitScout
 handoff/retrieval path, idempotent workbook runner, accepted-plan
 materialization, material starter rows, experiment preflight checks, combined
-daily review, Daily Log to Results normalization, role-aware material search,
-and Google Sheets snapshot runner. It does not yet watch a live spreadsheet
-continuously.
+daily review, Daily Log to Results normalization, formulation quantity
+normalization, role-aware material search, and Google Sheets snapshot runner. It
+does not yet watch a live spreadsheet continuously.
