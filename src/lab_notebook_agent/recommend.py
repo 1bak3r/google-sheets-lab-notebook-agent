@@ -1,0 +1,426 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .litscout import build_litscout_commands, build_litscout_query
+from .materials import audit_experiment_materials
+from .search import LocalSemanticIndex, SearchResult, flatten_text
+
+
+def load_entry(path: str | Path) -> dict[str, Any]:
+    with Path(path).expanduser().open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError("Experiment entry must be a JSON object.")
+    return data
+
+
+def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None = None) -> dict[str, Any]:
+    index = index or LocalSemanticIndex.from_default()
+    query = entry_query(entry)
+    matches = index.search(query, k=4)
+    signals = extract_signals(entry)
+    material_audit = audit_experiment_materials(entry)
+    experiment_id = str(entry.get("experiment_id", "unassigned"))
+    process_type = str(entry.get("process_type", "")).lower()
+
+    if "emulsion" in process_type and "polymer" in process_type:
+        proposal = emulsion_polymerization_next_experiment(entry, signals, matches)
+    else:
+        proposal = generic_next_experiment(entry, signals, matches)
+
+    confidence = "medium" if matches and signals else "low"
+    if "coagulum" in signals or "particle_size_high" in signals:
+        confidence = "medium"
+    literature = entry.get("literature_evidence", []) or []
+    linked_evidence_ids = [
+        str(row.get("evidence_id"))
+        for row in literature
+        if isinstance(row, dict) and row.get("evidence_id")
+    ]
+    rationale = proposal["rationale"]
+    if material_audit["summary"]:
+        rationale = f"{rationale} Material audit: {material_audit['summary']}"
+    if linked_evidence_ids:
+        rationale = (
+            f"{rationale} Literature Evidence rows {', '.join(linked_evidence_ids[:5])} "
+            "are linked for human review before execution."
+        )
+        confidence = "medium"
+    proposed_plan = build_proposed_experiment_plan(
+        entry,
+        signals=signals,
+        material_audit=material_audit,
+        linked_evidence_ids=linked_evidence_ids,
+    )
+
+    return {
+        "suggestion_id": f"SUG-{experiment_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "experiment_id": experiment_id,
+        "recommendation_type": "next_experiment",
+        "rationale": rationale,
+        "proposed_change": proposal["proposed_change"],
+        "expected_effect": proposal["expected_effect"],
+        "linked_evidence_ids": linked_evidence_ids,
+        "safety_check": (
+            "Human review required. Confirm SDS, SOP, pressure/thermal limits, "
+            "inhibitor removal assumptions, and waste handling before running."
+        ),
+        "confidence": confidence,
+        "status": "draft",
+        "detected_signals": sorted(signals),
+        "material_audit": material_audit,
+        "proposed_experiment_plan": proposed_plan,
+        "knowledge_matches": [
+            {
+                "id": result.record.get("id"),
+                "process_type": result.record.get("process_type"),
+                "score": round(result.score, 4),
+                "summary": result.record.get("summary"),
+            }
+            for result in matches
+        ],
+        "litscout": {
+            "query": build_litscout_query(entry, matches),
+            "commands": build_litscout_commands(entry, matches),
+        },
+    }
+
+
+def entry_query(entry: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(entry.get("process_type", "")),
+            str(entry.get("objective", "")),
+            str(entry.get("hypothesis", "")),
+            flatten_text(entry.get("observations", "")),
+            flatten_text(entry.get("results", "")),
+            flatten_text(entry.get("formulation", "")),
+        ]
+    )
+
+
+def extract_signals(entry: dict[str, Any]) -> set[str]:
+    text = entry_query(entry).lower()
+    signals: set[str] = set()
+    if "coagulum" in text or "coagulated" in text or "phase separation" in text:
+        signals.add("coagulum")
+    if "grit" in text or "precipitate" in text:
+        signals.add("instability")
+    if "low conversion" in text:
+        signals.add("low_conversion")
+
+    for observation in entry.get("observations", []) or []:
+        if isinstance(observation, dict):
+            for tag in str(observation.get("issue_tags", "")).split(","):
+                tag = tag.strip().lower()
+                if tag:
+                    signals.add(tag)
+            particle_size = coerce_float(observation.get("particle_size_nm"))
+            if particle_size and particle_size > 350:
+                signals.add("particle_size_high")
+            conversion = coerce_float(observation.get("conversion_percent"))
+            if conversion is not None and conversion < 85:
+                signals.add("low_conversion")
+
+    for result in entry.get("results", []) or []:
+        if isinstance(result, dict):
+            measurement = str(result.get("measurement_type", "")).lower()
+            value = coerce_float(result.get("value"))
+            if value and ("particle" in measurement or "dls" in measurement) and value > 350:
+                signals.add("particle_size_high")
+            if value is not None and "conversion" in measurement and value < 85:
+                signals.add("low_conversion")
+    return signals
+
+
+def coerce_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def emulsion_polymerization_next_experiment(
+    entry: dict[str, Any],
+    signals: set[str],
+    matches: list[SearchResult],
+) -> dict[str, str]:
+    base = (
+        "Run a controlled emulsion polymerization follow-up that keeps monomer "
+        "identity, target solids, temperature, agitation, and total initiator "
+        "basis fixed while changing only the latex-stability variables."
+    )
+    changes = [
+        "Create two or three conditions around the current formulation rather than changing every factor.",
+        "Record surfactant identity, surfactant active mass, initiator feed, monomer feed rate, pH, temperature, solids, particle size, conversion, and coagulum mass.",
+    ]
+    rationale_bits = [
+        "The process-knowledge match indicates emulsion polymerization outcomes are strongly tied to surfactant package, radical flux, feed profile, and particle-size measurements."
+    ]
+    expected = [
+        "The next run should make particle-size and stability changes attributable to one formulation axis."
+    ]
+
+    if "particle_size_high" in signals:
+        changes.append(
+            "Add a particle-size arm that modestly increases effective surfactant level or slows monomer feed while leaving monomer composition fixed."
+        )
+        rationale_bits.append("The entry reports particle size above the 200-350 nm scaffold target window.")
+        expected.append("Particle size should shift downward or reveal whether surfactant/feed is not the controlling factor.")
+    if "coagulum" in signals or "instability" in signals:
+        changes.append(
+            "Add a stability arm that uses the same total surfactant active mass but compares ionic-only versus mixed ionic/nonionic surfactant package."
+        )
+        rationale_bits.append("The entry reports coagulum or visible instability, so latex stabilization should be isolated before changing monomers.")
+        expected.append("Coagulum mass should decrease if colloidal stabilization is limiting the current recipe.")
+    if "low_conversion" in signals:
+        changes.append(
+            "Add an initiator/process-health check: verify initiator freshness, hold temperature, purge quality, and consider a chase feed only after the baseline is reproduced."
+        )
+        rationale_bits.append("The entry suggests low conversion, which can confound particle-size and stability conclusions.")
+        expected.append("Conversion should improve or identify oxygen inhibition, thermal drift, or initiator decomposition as a constraint.")
+
+    if len(changes) == 2:
+        changes.append(
+            "Use a small DOE with surfactant level and feed duration as the first two factors because these are actionable and measurable in the current sheet schema."
+        )
+    material_audit = audit_experiment_materials(entry)
+    if material_audit["missing_required_role_groups"] or material_audit["quantity_gaps"]:
+        changes.append(
+            "Before running the follow-up, complete the material scaffold: "
+            + " ".join(material_audit["recommendations"])
+        )
+
+    if matches:
+        top = matches[0].record.get("summary")
+        if top:
+            rationale_bits.append(f"Top local knowledge match: {top}")
+
+    return {
+        "rationale": " ".join(rationale_bits),
+        "proposed_change": base + " " + " ".join(changes),
+        "expected_effect": " ".join(expected),
+    }
+
+
+def generic_next_experiment(
+    entry: dict[str, Any],
+    signals: set[str],
+    matches: list[SearchResult],
+) -> dict[str, str]:
+    objective = entry.get("objective", "the current objective")
+    match_text = matches[0].record.get("summary") if matches else "No strong process match was found."
+    return {
+        "rationale": f"Use the current result to isolate one variable related to {objective}. {match_text}",
+        "proposed_change": (
+            "Plan one follow-up experiment with a single intentional variable, "
+            "hold all other formulation and process fields constant, and add "
+            "missing measurements to the Results tab."
+        ),
+        "expected_effect": "The result should be easier to attribute to the selected variable.",
+    }
+
+
+def build_proposed_experiment_plan(
+    entry: dict[str, Any],
+    signals: set[str],
+    material_audit: dict[str, Any],
+    linked_evidence_ids: list[str],
+) -> dict[str, Any]:
+    process_type = str(entry.get("process_type", ""))
+    if "emulsion" in process_type.lower() and "polymer" in process_type.lower():
+        return build_emulsion_polymerization_plan(entry, signals, material_audit, linked_evidence_ids)
+    experiment_id = str(entry.get("experiment_id", "unassigned"))
+    return {
+        "parent_experiment_id": experiment_id,
+        "suggested_experiment_id": f"{experiment_id}-FUP-001",
+        "process_type": process_type,
+        "objective": f"Follow up {entry.get('objective', 'the current objective')} with one isolated variable.",
+        "hypothesis": "Changing one variable at a time will make the result interpretable.",
+        "variables": [
+            {
+                "factor": "single_selected_variable",
+                "levels": ["baseline", "one intentional change"],
+                "rationale": "The current process type does not yet have a specialized DOE template.",
+            }
+        ],
+        "controls": ["Repeat the current best-known condition."],
+        "measurements": ["record primary result metric", "record observations", "record deviations"],
+        "acceptance_criteria": ["Result can be attributed to the selected variable."],
+        "prerequisites": material_audit.get("recommendations", []),
+        "linked_evidence_ids": linked_evidence_ids,
+    }
+
+
+def build_emulsion_polymerization_plan(
+    entry: dict[str, Any],
+    signals: set[str],
+    material_audit: dict[str, Any],
+    linked_evidence_ids: list[str],
+) -> dict[str, Any]:
+    experiment_id = str(entry.get("experiment_id", "EP"))
+    suggested_experiment_id = f"{experiment_id}-FUP-001"
+    variables = [
+        {
+            "factor": "baseline_repeat",
+            "levels": ["repeat current formulation exactly"],
+            "rationale": "Provides a control for run-to-run variation before interpreting formulation changes.",
+        }
+    ]
+    if "particle_size_high" in signals:
+        variables.append(
+            {
+                "factor": "surfactant_active_basis_or_feed_duration",
+                "levels": ["current surfactant/feed", "modestly higher surfactant active basis or slower monomer feed"],
+                "rationale": "Particle size above target suggests nucleation/stabilization or feed-rate limitation.",
+            }
+        )
+    if "coagulum" in signals or "instability" in signals:
+        variables.append(
+            {
+                "factor": "surfactant_package",
+                "levels": ["current package", "same active mass with mixed ionic/nonionic package"],
+                "rationale": "Coagulum or visible instability points to colloidal stabilization as a first variable to isolate.",
+            }
+        )
+    if "low_conversion" in signals:
+        variables.append(
+            {
+                "factor": "initiator_process_health",
+                "levels": ["current initiator feed", "verified fresh initiator and optional chase after baseline"],
+                "rationale": "Low conversion can confound particle-size and stability interpretation.",
+            }
+        )
+    if len(variables) == 1:
+        variables.append(
+            {
+                "factor": "surfactant_level_x_feed_duration",
+                "levels": ["current", "surfactant +10-20% or feed duration +25%"],
+                "rationale": "Default emulsion-polymerization screen when no stronger failure signal is present.",
+            }
+        )
+
+    prerequisites = []
+    if not material_audit.get("ready_for_quantitative_suggestion", False):
+        prerequisites.extend(material_audit.get("recommendations", []))
+
+    return {
+        "parent_experiment_id": experiment_id,
+        "suggested_experiment_id": suggested_experiment_id,
+        "process_type": "emulsion polymerization",
+        "objective": "Isolate whether latex particle size and coagulum are controlled by surfactant package, feed profile, or process health.",
+        "hypothesis": "Holding monomer identity, target solids, temperature, agitation, and initiator basis fixed while changing latex-stability variables will lower particle size and reduce coagulum if colloidal stabilization/feed profile is limiting.",
+        "variables": variables,
+        "controls": [
+            "Repeat the current formulation as a baseline if material quantities are complete.",
+            "Keep monomer identity, target solids, temperature, agitation, and total initiator basis fixed across arms.",
+        ],
+        "formulation_strategy": [
+            "Use existing reagent_id values from Master Reagents and Formulations.",
+            "Change only one primary factor per arm unless deliberately running a small DOE.",
+            "Record mass_g, volume_mL, moles_mmol, concentration, feed_start_min, and feed_duration_min for every formulation row.",
+        ],
+        "measurements": [
+            "particle_size_nm",
+            "solids_percent",
+            "conversion_percent",
+            "coagulum_mass_g",
+            "pH",
+            "temperature_C",
+            "viscosity_cP",
+            "observation",
+        ],
+        "acceptance_criteria": [
+            "Particle size moves toward the 200-350 nm target window.",
+            "Coagulum mass decreases relative to the baseline repeat.",
+            "Conversion remains high enough that stability changes are not confounded by incomplete polymerization.",
+            "No new safety or handling issue appears during feed, hold, or workup.",
+        ],
+        "prerequisites": prerequisites,
+        "linked_evidence_ids": linked_evidence_ids,
+        "sheet_rows": {
+            "experiments": [
+                {
+                    "experiment_id": suggested_experiment_id,
+                    "process_type": "emulsion polymerization",
+                    "objective": "Follow up latex particle size/coagulum by isolating surfactant package and feed profile.",
+                    "hypothesis": "Latex stability and particle size improve when surfactant/feed variables are isolated while core chemistry is held fixed.",
+                    "linked_literature_ids": ",".join(linked_evidence_ids),
+                    "status": "planned",
+                }
+            ],
+            "formulations": formulation_rows_for_followup(entry, suggested_experiment_id, variables),
+            "results_to_capture": [
+                {"measurement_type": measurement, "units": suggested_units(measurement)}
+                for measurement in (
+                    "particle_size_nm",
+                    "solids_percent",
+                    "conversion_percent",
+                    "coagulum_mass_g",
+                    "pH",
+                    "viscosity_cP",
+                )
+            ],
+        },
+    }
+
+
+def formulation_rows_for_followup(
+    entry: dict[str, Any],
+    suggested_experiment_id: str,
+    variables: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    factor_text = ", ".join(str(variable.get("factor", "")) for variable in variables if variable.get("factor"))
+    rows = []
+    for index, source_row in enumerate(entry.get("formulation", []) or [], start=1):
+        if not isinstance(source_row, dict):
+            continue
+        row = {
+            "experiment_id": suggested_experiment_id,
+            "reagent_id": source_row.get("reagent_id", ""),
+            "phase": source_row.get("phase", ""),
+            "target_role": source_row.get("target_role", ""),
+            "mass_g": source_row.get("mass_g", ""),
+            "volume_mL": source_row.get("volume_mL", ""),
+            "moles_mmol": source_row.get("moles_mmol", ""),
+            "concentration": source_row.get("concentration", ""),
+            "concentration_units": source_row.get("concentration_units", ""),
+            "wt_percent": source_row.get("wt_percent", ""),
+            "feed_order": source_row.get("feed_order", index),
+            "feed_start_min": source_row.get("feed_start_min", ""),
+            "feed_duration_min": source_row.get("feed_duration_min", ""),
+            "notes": followup_formulation_note(source_row, factor_text),
+        }
+        if row["reagent_id"] and row["target_role"]:
+            rows.append(row)
+    return rows
+
+
+def followup_formulation_note(source_row: dict[str, Any], factor_text: str) -> str:
+    source_note = str(source_row.get("notes", "")).strip()
+    parts = [
+        "Draft follow-up row copied from parent formulation; verify quantities before running.",
+    ]
+    if factor_text:
+        parts.append(f"Planned variables: {factor_text}.")
+    if source_note:
+        parts.append(f"Parent notes: {source_note}")
+    return " ".join(parts)
+
+
+def suggested_units(measurement: str) -> str:
+    return {
+        "particle_size_nm": "nm",
+        "solids_percent": "%",
+        "conversion_percent": "%",
+        "coagulum_mass_g": "g",
+        "pH": "",
+        "viscosity_cP": "cP",
+    }.get(measurement, "")

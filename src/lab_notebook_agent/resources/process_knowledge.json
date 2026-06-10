@@ -1,0 +1,77 @@
+{
+  "records": [
+    {
+      "id": "process.emulsion_polymerization.materials",
+      "process_type": "emulsion polymerization",
+      "summary": "Emulsion polymerization recipes usually depend on a small set of roles: monomers/comonomers, water or aqueous phase, surfactant package, initiator system, buffer or pH control, optional chain-transfer agent, and optional crosslinker.",
+      "material_roles": {
+        "monomer": ["acrylate monomers", "methacrylate monomers", "functional comonomers"],
+        "initiator": ["ammonium persulfate", "potassium persulfate", "redox initiator systems"],
+        "surfactant": ["anionic surfactants", "nonionic surfactants", "mixed ionic/nonionic packages"],
+        "aqueous_phase": ["deionized water", "buffer", "pH adjuster"],
+        "optional": ["crosslinker", "chain-transfer agent", "inhibitor scavenger"]
+      },
+      "measurements": ["mass_g", "volume_mL", "moles_mmol", "temperature_C", "rpm", "pH", "solids_percent", "particle_size_nm", "conversion_percent", "coagulum_mass_g"],
+      "guidance": [
+        "Record reagent identity and physical properties in Master Reagents, then reference reagent_id from Formulations.",
+        "Keep monomer composition, surfactant level, initiator level, and feed profile explicit because they drive most interpretation.",
+        "Do not treat a recommendation as executable until SDS, SOP, and operating limits are reviewed."
+      ],
+      "search_terms": ["emulsion polymerization", "latex", "surfactant", "initiator", "monomer feed", "particle size"]
+    },
+    {
+      "id": "process.emulsion_polymerization.particle_size",
+      "process_type": "emulsion polymerization",
+      "summary": "Particle size and colloidal stability are commonly affected by surfactant type/level, seed design, ionic strength, solids, agitation, and monomer feed rate.",
+      "signals": ["particle_size_high", "broad_psd", "coagulum", "phase separation", "viscosity increase"],
+      "measurements": ["particle_size_nm", "polydispersity_index", "solids_percent", "coagulum_mass_g", "viscosity_cP"],
+      "guidance": [
+        "When particle size is high, avoid changing monomer chemistry first; isolate surfactant package or feed duration.",
+        "When coagulum appears, capture where it formed, when it appeared, and whether it tracks feed, pH, temperature, or agitation.",
+        "Use DLS method details and sample dilution notes so changes are not instrument artifacts."
+      ],
+      "search_terms": ["emulsion polymerization surfactant particle size coagulum latex stability feed rate"]
+    },
+    {
+      "id": "process.emulsion_polymerization.initiator_conversion",
+      "process_type": "emulsion polymerization",
+      "summary": "Initiator concentration, thermal profile, oxygen removal, and chase feed strategy influence conversion and residual monomer.",
+      "signals": ["low_conversion", "residual_monomer", "temperature_drift", "oxygen_inhibition"],
+      "measurements": ["conversion_percent", "residual_monomer_percent", "temperature_C", "initiator_concentration", "hold_time_min"],
+      "guidance": [
+        "If conversion is low, verify initiator freshness, purge quality, and temperature before changing recipe composition.",
+        "Separate nucleation-stage initiator effects from chase-stage conversion effects in the Formulations tab.",
+        "Use the same conversion method across follow-up experiments."
+      ],
+      "search_terms": ["emulsion polymerization persulfate initiator conversion residual monomer oxygen inhibition"]
+    },
+    {
+      "id": "process.core_shell_latex.design",
+      "process_type": "core-shell latex emulsion polymerization",
+      "summary": "Core-shell latex experiments need explicit core/shell ratio, core Tg target, shell composition, crosslinker level, and particle size target.",
+      "material_roles": {
+        "core_monomer": ["low Tg acrylate monomer", "rubbery monomer"],
+        "shell_monomer": ["methyl methacrylate", "functional methacrylate", "glassy acrylate"],
+        "crosslinker": ["divinyl ester", "diacrylate", "dimethacrylate"]
+      },
+      "measurements": ["core_shell_ratio", "Tg_C", "particle_size_nm", "conversion_percent", "mechanical_property"],
+      "guidance": [
+        "Do not interpret toughening performance without recording particle size, shell composition, and matrix compatibility.",
+        "Use staged formulation rows to distinguish core feed, shell feed, and chase additions."
+      ],
+      "search_terms": ["core shell latex acrylic impact modifier particle size Tg shell composition emulsion polymerization"]
+    },
+    {
+      "id": "workflow.lab_notebook.data_quality",
+      "process_type": "daily lab notebook",
+      "summary": "A useful lab notebook agent needs structured reagent identities, exact quantities, timestamps, observations, measurements, and links to evidence before it can recommend a defensible next run.",
+      "measurements": ["experiment_id", "reagent_id", "mass_g", "volume_mL", "timestamp", "observation", "measurement_type", "value", "units"],
+      "guidance": [
+        "Make experiment_id and reagent_id stable because they are join keys across tabs.",
+        "Free-text observations are valuable, but measurements should be normalized into Results where possible.",
+        "Literature Evidence should cite DOI or URL and separate findings from interpretation."
+      ],
+      "search_terms": ["electronic lab notebook structured data experiment recommendation literature evidence"]
+    }
+  ]
+}

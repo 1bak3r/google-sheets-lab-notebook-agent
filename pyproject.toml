@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lab-notebook-agent"
+version = "0.1.0"
+description = "Google Sheets-first daily lab notebook scaffold with local semantic process guidance and LitScout handoff commands."
+requires-python = ">=3.10"
+dependencies = ["openpyxl>=3.1"]
+
+[project.optional-dependencies]
+google = ["google-auth>=2.29", "requests>=2.31"]
+
+[project.scripts]
+lab-notebook-agent = "lab_notebook_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lab_notebook_agent = ["resources/*.json"]

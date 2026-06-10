@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Lab Notebook Workbook Contract",
+  "type": "object",
+  "required": ["sheets"],
+  "properties": {
+    "sheets": {
+      "type": "array",
+      "description": "Google Sheets tabs expected by the lab notebook agent.",
+      "items": {
+        "type": "object",
+        "required": ["name", "headers"],
+        "properties": {
+          "name": { "type": "string" },
+          "headers": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

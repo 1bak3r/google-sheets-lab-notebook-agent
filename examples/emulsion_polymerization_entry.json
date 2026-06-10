@@ -1,0 +1,48 @@
+{
+  "experiment_id": "EP-001",
+  "date": "2026-06-09",
+  "project": "SABER CCSP",
+  "process_type": "emulsion polymerization",
+  "objective": "Reduce latex particle size while avoiding coagulum during a semi-batch acrylic emulsion polymerization.",
+  "hypothesis": "A slower monomer feed and better surfactant balance will reduce particle size and improve stability.",
+  "formulation": [
+    {
+      "reagent_id": "M-SKA",
+      "target_role": "core_monomer",
+      "phase": "monomer feed",
+      "feed_duration_min": 180
+    },
+    {
+      "reagent_id": "S-SDS",
+      "target_role": "surfactant",
+      "phase": "aqueous"
+    },
+    {
+      "reagent_id": "I-APS",
+      "target_role": "initiator",
+      "phase": "initiator feed",
+      "feed_duration_min": 210
+    }
+  ],
+  "observations": [
+    {
+      "timestamp": "2026-06-09T14:35:00",
+      "process_stage": "feed",
+      "temperature_C": 70,
+      "rpm": 250,
+      "particle_size_nm": 420,
+      "observation": "Latex looked bluish but small coagulum appeared on the stir shaft.",
+      "issue_tags": "coagulum,particle_size_high"
+    }
+  ],
+  "results": [
+    {
+      "sample_id": "EP-001-L1",
+      "measurement_type": "DLS particle size",
+      "value": 420,
+      "units": "nm",
+      "quality_flag": "suspect",
+      "interpretation": "Above target range."
+    }
+  ]
+}
