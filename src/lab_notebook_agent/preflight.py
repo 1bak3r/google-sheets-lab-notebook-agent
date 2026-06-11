@@ -239,7 +239,7 @@ def open_suggestions_check(tables: dict[str, list[dict[str, Any]]], experiment_i
                 row.get("suggestion_id", "") for row in suggestions if row.get("suggestion_id")
             ]
         },
-        actions=["Review open suggestions and set status to accepted, rejected, run_planned, or run_complete before rerunning without --force."],
+        actions=["Review open suggestions and set status to rejected or run_complete before rerunning without --force."],
     )
 
 

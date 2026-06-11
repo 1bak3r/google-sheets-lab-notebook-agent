@@ -1498,6 +1498,31 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("skipped", report["runs"][0]["status"])
             self.assertEqual("existing_suggestion", report["runs"][0]["skip_reason"])
 
+    def test_agent_report_allows_new_suggestion_after_run_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            output_path = Path(tmpdir) / "applied.xlsx"
+            run_workbook_agent(
+                workbook_path,
+                AgentRunConfig(experiment_ids=("EP-001",), litscout_export=str(works_path)),
+                apply=True,
+                output_workbook=output_path,
+            )
+            workbook = load_workbook(output_path)
+            suggestions = workbook["Agent Suggestions"]
+            headers = [cell.value for cell in suggestions[1]]
+            suggestions.cell(row=2, column=headers.index("status") + 1, value="run_complete")
+            workbook.save(output_path)
+
+            report = run_workbook_agent(
+                output_path,
+                AgentRunConfig(experiment_ids=("EP-001",), litscout_export=str(works_path)),
+            )
+            self.assertEqual("ready", report["runs"][0]["status"])
+            self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+            self.assertEqual("existing_evidence", report["runs"][0]["litscout_status"]["status"])
+
     def test_google_batch_requests_from_agent_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

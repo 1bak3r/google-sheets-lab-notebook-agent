@@ -24,6 +24,9 @@ from .sheets import (
 )
 
 
+OPEN_SUGGESTION_STATUSES = {"draft", "accepted", "run_planned"}
+
+
 @dataclass(frozen=True)
 class AgentRunConfig:
     experiment_ids: tuple[str, ...] = ()
@@ -345,7 +348,7 @@ def suggestions_for_experiment(tables: dict[str, list[dict[str, Any]]], experime
         row
         for row in tables.get("Agent Suggestions", [])
         if str(row.get("experiment_id", "")) == experiment_id
-        and str(row.get("status", "")).lower() in {"draft", "accepted", "run_planned", "run_complete"}
+        and str(row.get("status", "")).lower() in OPEN_SUGGESTION_STATUSES
     ]
 
 

@@ -602,6 +602,10 @@ After a human reviews a suggestion, set its `status` to `accepted` in
 notebook rows for `Experiments`, `Formulations`, and `Results`, then updates
 the original suggestion status to `run_planned`:
 
+Agent reruns treat `draft`, `accepted`, and `run_planned` suggestions as active
+open work for that experiment. Set a suggestion to `rejected` or `run_complete`
+when it should no longer block a fresh result-driven recommendation.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli materialize-accepted-plans \
   --workbook artifacts/lab_notebook_agent_applied.xlsx \

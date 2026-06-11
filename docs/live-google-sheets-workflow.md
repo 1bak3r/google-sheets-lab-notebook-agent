@@ -521,6 +521,11 @@ draft `Formulations`, and expected `Results` rows from the stored
 `proposed_plan_json`; the same batch updates the accepted suggestion status to
 `run_planned`:
 
+Agent reruns treat `draft`, `accepted`, and `run_planned` as active suggestion
+statuses. Set completed follow-ups to `run_complete`, or declined suggestions to
+`rejected`, before asking the agent for a fresh recommendation on that
+experiment.
+
 For emulsion-polymerization suggestions, the stored plan may include
 `planned_formulation_adjustments`. These are conservative row-level changes
 derived from result/literature signals, such as a +15% surfactant basis when a
