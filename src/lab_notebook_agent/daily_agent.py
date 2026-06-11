@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .agent import AgentRunConfig, apply_agent_report_to_workbook, build_agent_report
+from .agent import (
+    AgentRunConfig,
+    apply_agent_report_to_workbook,
+    build_agent_report,
+    linked_literature_ids_for_run,
+    split_literature_ids,
+    unique_ids,
+)
 from .daily_log_results import apply_daily_log_results_report_to_workbook, build_daily_log_results_report
 from .daily_reviews import apply_daily_review_rows_to_workbook, daily_review_row_from_run
 from .daily_summary import build_daily_summary_report
@@ -304,6 +311,7 @@ def build_daily_experiment_updates(
             "status": daily_experiment_status(experiment_row, experiment_summary, review, run),
             "planned_next_step": daily_experiment_next_step(experiment_id, review, run),
             "summary": daily_experiment_summary_text(experiment_id, experiment_summary, review, run),
+            "linked_literature_ids": daily_experiment_linked_literature_ids(experiment_id, experiment_row, run),
         }
         for field, value in values.items():
             if not value:
@@ -378,6 +386,27 @@ def daily_experiment_summary_text(
         f"{daily_experiment_count(experiment_id, run, 'append_agent_suggestions')} suggestion rows pending; "
         f"{preflight_summary.get('fail_count', 0)} preflight failures."
     )
+
+
+def daily_experiment_linked_literature_ids(
+    experiment_id: str,
+    experiment_row: dict[str, Any],
+    run: dict[str, Any],
+) -> str:
+    existing_ids = split_literature_ids(experiment_row.get("linked_literature_ids", ""))
+    linked_ids = []
+    reports = [
+        run.get("daily_log_results_report", {}),
+        run.get("agent_report", {}),
+    ]
+    for report in reports:
+        for row in report.get("runs", []) if isinstance(report, dict) else []:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("experiment_id", "")).strip() != experiment_id:
+                continue
+            linked_ids.extend(linked_literature_ids_for_run(row))
+    return ",".join(unique_ids([*existing_ids, *linked_ids]))
 
 
 def daily_experiment_write_count(experiment_id: str, run: dict[str, Any]) -> int:

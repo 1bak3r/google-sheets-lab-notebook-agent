@@ -354,6 +354,8 @@ class ScaffoldTests(unittest.TestCase):
                 1,
                 sum(1 for row in tables["Literature Evidence"] if row["evidence_id"] == "LIT-EP-010-001"),
             )
+            experiment = next(row for row in tables["Experiments"] if row["experiment_id"] == "EP-010")
+            self.assertEqual("LIT-EP-010-001", experiment["linked_literature_ids"])
             suggestion = next(row for row in tables["Agent Suggestions"] if row["experiment_id"] == "EP-010")
             self.assertEqual("LIT-EP-010-001", suggestion["linked_evidence_ids"])
 
@@ -421,6 +423,11 @@ class ScaffoldTests(unittest.TestCase):
                 agent_run["append_agent_suggestions"][0]["linked_evidence_ids"],
             )
             self.assertEqual("LIT-EP-010-001", agent_run["append_literature_evidence"][0]["evidence_id"])
+            self.assertEqual(
+                "LIT-EP-010-001",
+                run["apply_report"]["append_experiments"][0]["linked_literature_ids"],
+            )
+            self.assertEqual([], run["apply_report"]["update_experiments"])
 
     def test_material_audit_detects_emulsion_roles_and_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -755,6 +762,9 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("ready", report["runs"][0]["status"])
             self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
             self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
+            self.assertEqual(1, report["summary"]["experiment_cells_to_update"])
+            self.assertEqual("linked_literature_ids", report["update_experiments"][0]["field"])
+            self.assertEqual("LIT-EP-001-001", report["update_experiments"][0]["value"])
             suggestion = report["runs"][0]["append_agent_suggestions"][0]
             self.assertEqual(["LIT-EP-001-001"], suggestion["linked_evidence_ids"])
             self.assertEqual("loaded_export", report["runs"][0]["litscout_status"]["status"])
@@ -1142,9 +1152,9 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, len(run["experiment_reviews"]))
             self.assertEqual(1, run["apply_report"]["summary"]["daily_review_rows_to_append"])
             self.assertEqual(1, run["apply_audit"]["summary"]["daily_review_rows_to_append"])
-            self.assertEqual(3, run["summary"]["experiment_cells_to_update"])
-            self.assertEqual(3, run["apply_audit"]["summary"]["experiment_cells_to_update"])
-            self.assertEqual(7, run["summary"]["apply_request_count"])
+            self.assertEqual(4, run["summary"]["experiment_cells_to_update"])
+            self.assertEqual(4, run["apply_audit"]["summary"]["experiment_cells_to_update"])
+            self.assertEqual(8, run["summary"]["apply_request_count"])
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(111, run["batch_update_requests"][1]["appendCells"]["sheetId"])
             self.assertEqual(222, run["batch_update_requests"][2]["appendCells"]["sheetId"])
@@ -1166,6 +1176,7 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("DRV-20260609-EP001", workbook["Daily Reviews"]["A2"].value)
             self.assertEqual("2026-06-09", workbook["Daily Reviews"]["C2"].value)
             self.assertEqual("needs_attention", workbook["Daily Reviews"]["N2"].value)
+            self.assertEqual("LIT-EP-001-001", workbook["Experiments"]["G2"].value)
             self.assertEqual("needs_review", workbook["Experiments"]["I2"].value)
             self.assertIn("Daily review 2026-06-09", workbook["Experiments"]["K2"].value)
 
@@ -1182,6 +1193,7 @@ class ScaffoldTests(unittest.TestCase):
             )
             workbook = load_workbook(output_path)
             self.assertEqual("LIT-EP-001-001", workbook["Literature Evidence"]["A2"].value)
+            self.assertEqual("LIT-EP-001-001", workbook["Experiments"]["G2"].value)
             self.assertEqual("EP-001", workbook["Agent Suggestions"]["C2"].value)
             self.assertEqual("LIT-EP-001-001", workbook["Agent Suggestions"]["H2"].value)
             self.assertEqual("EP-001-FUP-001", workbook["Agent Suggestions"]["I2"].value)
@@ -1214,11 +1226,13 @@ class ScaffoldTests(unittest.TestCase):
             )
             requests = batch_update_requests_from_report(
                 report,
-                {"Literature Evidence": 111, "Agent Suggestions": 222},
+                {"Experiments": 101, "Literature Evidence": 111, "Agent Suggestions": 222},
             )
-            self.assertEqual(2, len(requests))
+            self.assertEqual(3, len(requests))
             self.assertEqual(111, requests[0]["appendCells"]["sheetId"])
             self.assertEqual(222, requests[1]["appendCells"]["sheetId"])
+            self.assertEqual(101, requests[2]["updateCells"]["start"]["sheetId"])
+            self.assertEqual(6, requests[2]["updateCells"]["start"]["columnIndex"])
             self.assertEqual("EP-001", requests[1]["appendCells"]["rows"][0]["values"][2]["userEnteredValue"]["stringValue"])
 
     def test_snapshot_round_trip_drives_agent_report_and_batch(self) -> None:
@@ -1228,7 +1242,7 @@ class ScaffoldTests(unittest.TestCase):
             tables = load_workbook_tables(workbook_path)
             snapshot = snapshot_from_tables(
                 tables,
-                {"Literature Evidence": 111, "Agent Suggestions": 222},
+                {"Experiments": 101, "Literature Evidence": 111, "Agent Suggestions": 222},
             )
             report = build_agent_report(
                 snapshot_to_tables(snapshot),
@@ -1236,7 +1250,7 @@ class ScaffoldTests(unittest.TestCase):
             )
             requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot))
             self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
-            self.assertEqual(2, len(requests))
+            self.assertEqual(3, len(requests))
             self.assertEqual("LIT-EP-001-001", requests[0]["appendCells"]["rows"][0]["values"][0]["userEnteredValue"]["stringValue"])
 
     def test_parse_sheet_id_args(self) -> None:
@@ -1367,11 +1381,11 @@ class ScaffoldTests(unittest.TestCase):
             )
             snapshot = snapshot_from_tables(
                 load_workbook_tables(workbook_path),
-                {"Literature Evidence": 111, "Agent Suggestions": 222},
+                {"Experiments": 101, "Literature Evidence": 111, "Agent Suggestions": 222},
             )
             audit = audit_report_against_snapshot(report, snapshot)
             self.assertTrue(audit["valid"], audit["errors"])
-            self.assertEqual(2, audit["summary"]["request_count"])
+            self.assertEqual(3, audit["summary"]["request_count"])
 
     def test_google_api_capture_snapshot_includes_live_sheet_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1464,6 +1478,7 @@ class ScaffoldTests(unittest.TestCase):
 
     def test_live_google_recorded_daily_agent_applies_combined_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
             client = FakeSheetsApiClient(
                 snapshot_from_tables(
                     load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx")),
@@ -1472,6 +1487,7 @@ class ScaffoldTests(unittest.TestCase):
                         "Formulations": 103,
                         "Daily Log": 104,
                         "Results": 102,
+                        "Literature Evidence": 111,
                         "Agent Suggestions": 222,
                         "Daily Reviews": 333,
                     },
@@ -1481,7 +1497,7 @@ class ScaffoldTests(unittest.TestCase):
                 "spreadsheet-123",
                 client,
                 sample_experiment_record(),
-                config=AgentRunConfig(),
+                config=AgentRunConfig(litscout_export=str(works_path)),
                 apply=True,
             )
             self.assertTrue(run["applied"])
@@ -1489,8 +1505,12 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("lab-notebook-agent-recorded-daily-run.v1", run["recorded_daily_run"]["schema"])
             self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
             self.assertEqual(
-                [101, 103, 104, 102, 222, 333],
+                [101, 103, 104, 102, 111, 222, 333],
                 [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
+            )
+            self.assertEqual(
+                "LIT-EP-010-001",
+                run["apply_report"]["append_experiments"][0]["linked_literature_ids"],
             )
             self.assertEqual(1, len(client.batch_updates))
 
@@ -1518,9 +1538,10 @@ class ScaffoldTests(unittest.TestCase):
             )
             self.assertTrue(run["applied"])
             self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
-            self.assertEqual(2, len(run["batch_update_requests"]))
+            self.assertEqual(3, len(run["batch_update_requests"]))
             self.assertEqual(1, len(client.batch_updates))
             self.assertEqual(222, run["batch_update_requests"][1]["appendCells"]["sheetId"])
+            self.assertEqual(101, run["batch_update_requests"][2]["updateCells"]["start"]["sheetId"])
 
     def test_live_google_daily_agent_run_applies_valid_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1548,7 +1569,7 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("lab-notebook-agent-daily-run.v1", run["daily_agent_run"]["schema"])
             self.assertEqual(1, run["daily_summary"]["summary"]["experiment_count"])
             self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
-            self.assertEqual(7, len(run["batch_update_requests"]))
+            self.assertEqual(8, len(run["batch_update_requests"]))
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
             self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])

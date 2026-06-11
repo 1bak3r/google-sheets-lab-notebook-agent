@@ -350,6 +350,7 @@ Emit raw Google Sheets `batchUpdate` requests from the same report:
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-batch-from-report \
   --report artifacts/agent-run-ep-001.json \
+  --experiments-sheet-id 1318498454 \
   --literature-evidence-sheet-id 1198739748 \
   --agent-suggestions-sheet-id 89758567 \
   --output artifacts/google-batch-ep-001.json

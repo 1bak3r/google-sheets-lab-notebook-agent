@@ -194,15 +194,16 @@ Write the collected values to:
 }
 ```
 
-`Literature Evidence` and `Agent Suggestions` need `sheet_id` values for the
-normal suggestion workflow. `Daily Reviews` needs a `sheet_id` value for the
-combined daily run. `Master Reagents` and `Formulations` need IDs when applying
-material starter rows, and `Formulations` needs an ID when writing normalized
-formulation quantity cells. `Experiments`, `Formulations`, `Daily Log`, and
-`Results` need IDs when applying a structured experiment record. `Experiments`,
-`Formulations`, and `Results` need IDs when materializing accepted suggestions
-into planned follow-up rows, and `Results` needs an ID when appending normalized
-Daily Log measurements.
+`Experiments`, `Literature Evidence`, and `Agent Suggestions` need `sheet_id`
+values for the normal suggestion workflow, because linked evidence IDs are also
+written back to the parent experiment row. `Daily Reviews` needs a `sheet_id`
+value for the combined daily run. `Master Reagents` and `Formulations` need IDs
+when applying material starter rows, and `Formulations` needs an ID when writing
+normalized formulation quantity cells. `Experiments`, `Formulations`,
+`Daily Log`, and `Results` need IDs when applying a structured experiment
+record. `Experiments`, `Formulations`, and `Results` need IDs when
+materializing accepted suggestions into planned follow-up rows, and `Results`
+needs an ID when appending normalized Daily Log measurements.
 
 ## 4. Validate The Snapshot
 

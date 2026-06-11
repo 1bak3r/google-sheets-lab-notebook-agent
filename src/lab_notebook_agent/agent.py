@@ -20,6 +20,7 @@ from .sheets import (
     append_rows_to_workbook,
     build_experiment_entry_from_tables,
     load_workbook_tables,
+    update_workbook_rows_by_key,
 )
 
 
@@ -136,6 +137,9 @@ def build_agent_report(
             }
         )
 
+    experiment_updates = build_agent_experiment_updates(tables, runs)
+    summary = summarize_runs(runs)
+    summary["experiment_cells_to_update"] = len(experiment_updates)
     return {
         "schema": "lab-notebook-agent-run.v1",
         "selection": {
@@ -143,8 +147,9 @@ def build_agent_report(
             "review_date": config.review_date or "",
             "selected_experiment_ids": selected_ids,
         },
-        "summary": summarize_runs(runs),
+        "summary": summary,
         "runs": runs,
+        "update_experiments": experiment_updates,
     }
 
 
@@ -187,6 +192,9 @@ def apply_agent_report_to_workbook(
                 destination,
             )
             current = destination
+    experiment_updates = report.get("update_experiments", [])
+    if experiment_updates:
+        update_workbook_rows_by_key(current, "Experiments", experiment_updates, output_path=destination)
     return destination
 
 
@@ -357,6 +365,84 @@ def rows_not_present(
 ) -> list[dict[str, Any]]:
     existing = {str(row.get(key, "")) for row in existing_rows}
     return [row for row in rows if str(row.get(key, "")) not in existing]
+
+
+def build_agent_experiment_updates(
+    tables: dict[str, list[dict[str, Any]]],
+    runs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    experiment_rows = [
+        row
+        for row in tables.get("Experiments", [])
+        if isinstance(row, dict)
+    ]
+    experiments_by_id = {
+        str(row.get("experiment_id", "")).strip(): (row_number, row)
+        for row_number, row in enumerate(experiment_rows, start=2)
+        if str(row.get("experiment_id", "")).strip()
+    }
+    updates = []
+    for run in runs:
+        if not isinstance(run, dict):
+            continue
+        experiment_id = str(run.get("experiment_id", "")).strip()
+        if experiment_id not in experiments_by_id:
+            continue
+        linked_ids = linked_literature_ids_for_run(run)
+        if not linked_ids:
+            continue
+        row_number, experiment_row = experiments_by_id[experiment_id]
+        existing_ids = split_literature_ids(experiment_row.get("linked_literature_ids", ""))
+        combined_ids = unique_ids([*existing_ids, *linked_ids])
+        value = ",".join(combined_ids)
+        if value == ",".join(existing_ids):
+            continue
+        updates.append(
+            {
+                "sheet": "Experiments",
+                "row_number": row_number,
+                "experiment_id": experiment_id,
+                "key_field": "experiment_id",
+                "key_value": experiment_id,
+                "field": "linked_literature_ids",
+                "value": value,
+            }
+        )
+    return updates
+
+
+def linked_literature_ids_for_run(run: dict[str, Any]) -> list[str]:
+    ids = []
+    for evidence in run.get("append_literature_evidence", []) or []:
+        if isinstance(evidence, dict):
+            ids.extend(split_literature_ids(evidence.get("evidence_id", "")))
+    for suggestion in run.get("append_agent_suggestions", []) or []:
+        if isinstance(suggestion, dict):
+            ids.extend(split_literature_ids(suggestion.get("linked_evidence_ids", [])))
+    return unique_ids(ids)
+
+
+def split_literature_ids(value: Any) -> list[str]:
+    if isinstance(value, str):
+        pieces = value.replace(";", ",").split(",")
+    elif isinstance(value, (list, tuple)):
+        pieces = []
+        for item in value:
+            pieces.extend(split_literature_ids(item))
+    else:
+        pieces = [str(value)] if value not in (None, "") else []
+    return [str(piece).strip() for piece in pieces if str(piece).strip()]
+
+
+def unique_ids(values: list[str]) -> list[str]:
+    seen = set()
+    ids = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        ids.append(value)
+    return ids
 
 
 def notebook_context_matches(
