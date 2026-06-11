@@ -621,9 +621,11 @@ For emulsion-polymerization suggestions, the stored plan may include
 `planned_formulation_adjustments`. These are conservative row-level changes
 derived from result/literature signals, such as a +15% surfactant basis when a
 numeric surfactant row exists, or a slower monomer feed when particle size is
-high and no numeric surfactant basis is available. The materialized
-`Formulations` rows include the proposed value plus notes for human review
-before execution.
+high and no numeric surfactant basis is available. Numeric surfactant bases can
+be `mass_g`, `moles_mmol`, stock `volume_mL`, or `wt_percent`. When one basis
+is adjusted, dependent copied quantity cells are cleared so they can be
+recalculated before execution. The materialized `Formulations` rows include the
+proposed value plus notes for human review before execution.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli materialize-accepted-plans \

@@ -1277,6 +1277,48 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("0.23", formulation_by_role["surfactant"]["mass_g"])
         self.assertEqual(180, formulation_by_role["core_monomer"]["feed_duration_min"])
 
+    def test_structured_emulsion_plan_adjusts_surfactant_stock_volume_basis(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["formulation"][1]["volume_mL"] = "2.5"
+        entry["formulation"][1]["concentration"] = "0.1"
+        entry["formulation"][1]["concentration_units"] = "M"
+
+        suggestion = build_recommendation(entry)
+
+        plan = suggestion["proposed_experiment_plan"]
+        adjustment = next(
+            adjustment
+            for adjustment in plan["planned_formulation_adjustments"]
+            if adjustment["target_role"] == "surfactant" and adjustment["field"] == "volume_mL"
+        )
+        self.assertEqual("2.5", adjustment["parent_value"])
+        self.assertEqual("2.875", adjustment["proposed_value"])
+        formulation_by_role = {
+            row["target_role"]: row
+            for row in plan["sheet_rows"]["formulations"]
+        }
+        self.assertEqual("2.875", formulation_by_role["surfactant"]["volume_mL"])
+        self.assertEqual("0.1", formulation_by_role["surfactant"]["concentration"])
+        self.assertEqual("M", formulation_by_role["surfactant"]["concentration_units"])
+
+    def test_structured_emulsion_plan_clears_stale_quantities_after_basis_adjustment(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["formulation"][1]["mass_g"] = "0.20"
+        entry["formulation"][1]["volume_mL"] = "0.19"
+        entry["formulation"][1]["moles_mmol"] = "0.876"
+
+        suggestion = build_recommendation(entry)
+
+        formulation_by_role = {
+            row["target_role"]: row
+            for row in suggestion["proposed_experiment_plan"]["sheet_rows"]["formulations"]
+        }
+        surfactant = formulation_by_role["surfactant"]
+        self.assertEqual("0.23", surfactant["mass_g"])
+        self.assertEqual("", surfactant["volume_mL"])
+        self.assertEqual("", surfactant["moles_mmol"])
+        self.assertIn("Cleared dependent quantity fields", surfactant["notes"])
+
     def test_structured_emulsion_plan_focuses_low_conversion_on_process_health(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
         entry["objective"] = "Improve monomer conversion without changing latex chemistry."

@@ -678,9 +678,12 @@ available material data so blank quantities are not invented. The follow-up
 objective, hypothesis, and acceptance criteria follow the detected signal, so a
 conversion-only run focuses on initiator/process health rather than surfactant
 package or coagulum. When the source row has a numeric surfactant basis, high
-particle size proposes a modest surfactant-basis increase; otherwise the draft
-row slows monomer feed when feed duration is available and records review notes
-when only qualitative action is defensible.
+particle size proposes a modest surfactant-basis increase. Numeric surfactant
+bases can be `mass_g`, `moles_mmol`, stock `volume_mL`, or `wt_percent`; when
+one basis is adjusted, dependent copied quantity cells are cleared so they can
+be recalculated before execution. If no numeric surfactant basis is available,
+the draft row slows monomer feed when feed duration is available and records
+review notes when only qualitative action is defensible.
 
 After a human reviews a suggestion, set its `status` to `accepted` in
 `Agent Suggestions`. The materializer turns accepted suggestions into concrete

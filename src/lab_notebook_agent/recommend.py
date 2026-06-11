@@ -11,6 +11,9 @@ from .result_analysis import build_result_analysis
 from .search import LocalSemanticIndex, SearchResult, flatten_text
 
 
+FORMULATION_QUANTITY_FIELDS = ("mass_g", "volume_mL", "moles_mmol", "wt_percent")
+
+
 def load_entry(path: str | Path) -> dict[str, Any]:
     with Path(path).expanduser().open("r", encoding="utf-8") as handle:
         data = json.load(handle)
@@ -664,7 +667,10 @@ def formulation_adjustments_for_followup(
     initiator = first_formulation_row(formulation, {"initiator"})
 
     if "particle_size_high" in signals:
-        surfactant_basis = first_numeric_field(surfactant[1] if surfactant else {}, ("mass_g", "wt_percent"))
+        surfactant_basis = first_numeric_field(
+            surfactant[1] if surfactant else {},
+            ("mass_g", "moles_mmol", "volume_mL", "wt_percent"),
+        )
         if surfactant and surfactant_basis:
             adjustment = scaled_formulation_adjustment(
                 surfactant[0],
@@ -831,21 +837,44 @@ def formulation_rows_for_followup(
             "feed_order": source_row.get("feed_order", index),
             "feed_start_min": source_row.get("feed_start_min", ""),
             "feed_duration_min": source_row.get("feed_duration_min", ""),
-            "notes": followup_formulation_note(source_row, factor_text, row_adjustments),
         }
+        adjusted_quantity_fields = set()
         for adjustment in row_adjustments:
             field = str(adjustment.get("field", ""))
             if field in row and field != "notes":
                 row[field] = adjustment.get("proposed_value", row[field])
+                if field in FORMULATION_QUANTITY_FIELDS:
+                    adjusted_quantity_fields.add(field)
+        cleared_quantity_fields = clear_dependent_quantity_fields(row, adjusted_quantity_fields)
+        row["notes"] = followup_formulation_note(
+            source_row,
+            factor_text,
+            row_adjustments,
+            cleared_quantity_fields,
+        )
         if row["reagent_id"] and row["target_role"]:
             rows.append(row)
     return rows
+
+
+def clear_dependent_quantity_fields(row: dict[str, Any], adjusted_fields: set[str]) -> list[str]:
+    if not adjusted_fields:
+        return []
+    cleared = []
+    for field in FORMULATION_QUANTITY_FIELDS:
+        if field in adjusted_fields:
+            continue
+        if str(row.get(field, "")).strip():
+            row[field] = ""
+            cleared.append(field)
+    return cleared
 
 
 def followup_formulation_note(
     source_row: dict[str, Any],
     factor_text: str,
     adjustments: list[dict[str, Any]] | None = None,
+    cleared_quantity_fields: list[str] | None = None,
 ) -> str:
     source_note = str(source_row.get("notes", "")).strip()
     parts = [
@@ -880,6 +909,12 @@ def followup_formulation_note(
         proposed_note = str(adjustment.get("proposed_value", "")).strip()
         if proposed_note:
             parts.append(f"Review note: {proposed_note}")
+    if cleared_quantity_fields:
+        parts.append(
+            "Cleared dependent quantity fields after adjusted basis: "
+            + ", ".join(cleared_quantity_fields)
+            + "."
+        )
     if source_note:
         parts.append(f"Parent notes: {source_note}")
     return " ".join(parts)
