@@ -274,10 +274,13 @@ Use `normalize-formulations` after entering at least one quantitative basis in
 `Formulations` and the matching physical properties in `Master Reagents`. It
 fills blank `mass_g`, `volume_mL`, and `moles_mmol` cells when those values can
 be derived from existing mass, volume, moles, molecular weight, density, or an
-optional `purity_fraction`. Purity adjusts active moles from gross mass and
-gross mass from active moles. When at least two rows in an experiment have
-observed or derived mass, it also fills blank `wt_percent` cells from the total
-formulation mass. It skips populated cells, so the command can be rerun safely:
+optional `purity_fraction`. Molar stock units such as `M` or `mmol/mL` derive
+active `moles_mmol` from `volume_mL`; mass-concentration units such as `mg/mL`
+derive active mass and then moles when molecular weight is available. Purity
+adjusts active moles from gross mass and gross mass from active moles. When at
+least two rows in an experiment have observed or derived mass, it also fills
+blank `wt_percent` cells from the total formulation mass. It skips populated
+cells, so the command can be rerun safely:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
@@ -729,6 +732,8 @@ Where possible, the audit derives formulation values:
 
 - `moles_mmol` from `mass_g`, `molecular_weight_g_mol`, and optional
   `purity_fraction`
+- `moles_mmol` from `volume_mL` and stock concentration units such as `M`,
+  `mmol/mL`, or `mg/mL` when molecular weight is needed
 - `mass_g` from `volume_mL` and `density_g_mL`
 - `volume_mL` from `mass_g` and `density_g_mL`
 - `mass_g` from `moles_mmol`, `molecular_weight_g_mol`, and optional

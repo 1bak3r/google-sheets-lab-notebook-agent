@@ -158,6 +158,8 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
         "molecular_weight_g_mol": numeric_reagent_property(row, "molecular_weight_g_mol"),
         "density_g_mL": numeric_reagent_property(row, "density_g_mL"),
         "purity_fraction": numeric_reagent_fraction(row, "purity_fraction"),
+        "concentration": numeric_reagent_property(row, "concentration"),
+        "concentration_units": reagent_property_text(row, "concentration_units"),
     }
     derived: dict[str, float] = {}
 
@@ -167,6 +169,29 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
     molecular_weight = observed["molecular_weight_g_mol"]
     density = observed["density_g_mL"]
     purity = observed["purity_fraction"] or 1.0
+    concentration = observed["concentration"]
+    concentration_units = observed["concentration_units"]
+    concentration_fraction = concentration_to_fraction(concentration, concentration_units)
+    stock_active_mass_g: float | None = None
+    moles_from_stock_concentration = False
+
+    molarity = concentration_to_molarity_mmol_per_mL(concentration, concentration_units)
+    if moles_mmol is None and volume_mL is not None and molarity is not None:
+        moles_mmol = volume_mL * molarity
+        moles_from_stock_concentration = True
+        derived["moles_mmol"] = round(moles_mmol, 6)
+        if molecular_weight is not None:
+            stock_active_mass_g = (moles_mmol / 1000) * molecular_weight
+            derived["active_mass_g"] = round(stock_active_mass_g, 6)
+
+    mass_concentration = concentration_to_mass_g_per_mL(concentration, concentration_units)
+    if volume_mL is not None and mass_concentration is not None:
+        stock_active_mass_g = volume_mL * mass_concentration
+        derived["active_mass_g"] = round(stock_active_mass_g, 6)
+        if moles_mmol is None and molecular_weight is not None:
+            moles_mmol = (stock_active_mass_g / molecular_weight) * 1000
+            moles_from_stock_concentration = True
+            derived["moles_mmol"] = round(moles_mmol, 6)
 
     if mass_g is None and volume_mL is not None and density is not None:
         mass_g = volume_mL * density
@@ -175,14 +200,32 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
         volume_mL = mass_g / density
         derived["volume_mL"] = round(volume_mL, 6)
     if moles_mmol is None and mass_g is not None and molecular_weight is not None:
-        active_mass_g = mass_g * purity
-        if purity != 1.0:
+        if stock_active_mass_g is not None:
+            active_mass_g = stock_active_mass_g
+        elif concentration_fraction is not None:
+            active_mass_g = mass_g * concentration_fraction
             derived["active_mass_g"] = round(active_mass_g, 6)
-        moles_mmol = (active_mass_g / molecular_weight) * 1000
-        derived["moles_mmol"] = round(moles_mmol, 6)
-    if mass_g is None and moles_mmol is not None and molecular_weight is not None:
+        elif concentration is not None and concentration_units:
+            active_mass_g = None
+        else:
+            active_mass_g = mass_g * purity
+            if purity != 1.0:
+                derived["active_mass_g"] = round(active_mass_g, 6)
+        if active_mass_g is not None:
+            moles_mmol = (active_mass_g / molecular_weight) * 1000
+            derived["moles_mmol"] = round(moles_mmol, 6)
+    if (
+        mass_g is None
+        and moles_mmol is not None
+        and molecular_weight is not None
+        and not moles_from_stock_concentration
+    ):
         active_mass_g = (moles_mmol / 1000) * molecular_weight
-        mass_g = active_mass_g / purity
+        if concentration_fraction is not None:
+            mass_g = active_mass_g / concentration_fraction
+            derived["active_mass_g"] = round(active_mass_g, 6)
+        else:
+            mass_g = active_mass_g / purity
         if purity != 1.0:
             derived["active_mass_g"] = round(active_mass_g, 6)
         derived["mass_g"] = round(mass_g, 6)
@@ -194,7 +237,10 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
     target_role = str(row.get("target_role", ""))
     if any(role in target_role for role in ("monomer", "initiator", "surfactant", "crosslinker")):
         if moles_mmol is None:
-            missing.append("moles_mmol needs mass_g plus molecular_weight_g_mol, or direct moles_mmol")
+            missing.append(
+                "moles_mmol needs direct moles_mmol, mass_g plus molecular_weight_g_mol, "
+                "or volume_mL plus stock concentration units"
+            )
     if "monomer" in target_role and volume_mL is None:
         missing.append("volume_mL needs mass_g plus density_g_mL, volume_mL, or moles_mmol plus molecular_weight_g_mol and density_g_mL")
 
@@ -209,19 +255,86 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def numeric_reagent_property(row: dict[str, Any], field: str) -> float | None:
-    return (
-        numeric_value(row.get(field))
-        or numeric_value(row.get(f"reagent_{field}"))
-        or numeric_value((row.get("reagent") or {}).get(field))
-    )
+    for value in reagent_property_values(row, field):
+        number = numeric_value(value)
+        if number is not None:
+            return number
+    return None
 
 
 def numeric_reagent_fraction(row: dict[str, Any], field: str) -> float | None:
-    return (
-        numeric_fraction_value(row.get(field))
-        or numeric_fraction_value(row.get(f"reagent_{field}"))
-        or numeric_fraction_value((row.get("reagent") or {}).get(field))
-    )
+    for value in reagent_property_values(row, field):
+        number = numeric_fraction_value(value)
+        if number is not None:
+            return number
+    return None
+
+
+def reagent_property_text(row: dict[str, Any], field: str) -> str | None:
+    for value in reagent_property_values(row, field):
+        if nonblank(value):
+            return str(value).strip()
+    return None
+
+
+def reagent_property_values(row: dict[str, Any], field: str) -> list[Any]:
+    reagent = row.get("reagent") if isinstance(row.get("reagent"), dict) else {}
+    return [row.get(field), row.get(f"reagent_{field}"), reagent.get(field)]
+
+
+def concentration_to_molarity_mmol_per_mL(concentration: float | None, units: str | None) -> float | None:
+    if concentration is None or concentration <= 0:
+        return None
+    normalized = normalized_concentration_units(units)
+    if normalized in {"m", "molar", "mol/l", "moll-1", "mol/liter", "mol/litre"}:
+        return concentration
+    if normalized in {"mm", "mmolar", "mmol/l", "mmoll-1", "mmol/liter", "mmol/litre"}:
+        return concentration / 1000
+    if normalized in {"um", "umolar", "umol/l", "umoll-1", "umol/liter", "umol/litre"}:
+        return concentration / 1_000_000
+    if normalized in {"mmol/ml", "mmolml-1"}:
+        return concentration
+    if normalized in {"mol/ml", "molml-1"}:
+        return concentration * 1000
+    return None
+
+
+def concentration_to_mass_g_per_mL(concentration: float | None, units: str | None) -> float | None:
+    if concentration is None or concentration <= 0:
+        return None
+    normalized = normalized_concentration_units(units)
+    if normalized in {"g/ml", "gml-1"}:
+        return concentration
+    if normalized in {"mg/ml", "mgml-1"}:
+        return concentration / 1000
+    if normalized in {"ug/ml", "ugml-1"}:
+        return concentration / 1_000_000
+    if normalized in {"g/l", "gl-1"}:
+        return concentration / 1000
+    if normalized in {"mg/l", "mgl-1"}:
+        return concentration / 1_000_000
+    return None
+
+
+def concentration_to_fraction(concentration: float | None, units: str | None) -> float | None:
+    if concentration is None or concentration <= 0:
+        return None
+    normalized = normalized_concentration_units(units)
+    if normalized in {"%", "percent", "wt%", "weight%", "weightpercent", "w/w%", "%w/w"}:
+        fraction = concentration / 100
+        return fraction if 0 < fraction <= 1 else None
+    if normalized in {"fraction", "massfraction", "weightfraction", "w/w"}:
+        return concentration if 0 < concentration <= 1 else None
+    return None
+
+
+def normalized_concentration_units(units: str | None) -> str:
+    if not units:
+        return ""
+    text = str(units).strip().lower()
+    text = text.replace(chr(956), "u").replace(chr(181), "u").replace(chr(8722), "-")
+    text = text.replace(" per ", "/").replace(" / ", "/")
+    return text.replace(" ", "").replace(".", "")
 
 
 def numeric_fraction_value(value: Any) -> float | None:

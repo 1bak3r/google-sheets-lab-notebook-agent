@@ -250,6 +250,26 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(3, len(entry["formulation"]))
             self.assertEqual("solketal acrylate", entry["formulation"][0]["reagent_name"])
 
+    def test_workbook_entry_includes_reagent_stock_concentration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            for row in tables["Master Reagents"]:
+                if row["reagent_id"] == "I-APS":
+                    row["concentration"] = "0.1"
+                    row["concentration_units"] = "M"
+            for row in tables["Formulations"]:
+                if row["reagent_id"] == "I-APS":
+                    row["volume_mL"] = "2.5"
+
+            entry = build_experiment_entry_from_tables(tables, "EP-001")
+
+            initiator = next(row for row in entry["formulation"] if row["reagent_id"] == "I-APS")
+            self.assertEqual("0.1", initiator["reagent_concentration"])
+            self.assertEqual("M", initiator["reagent_concentration_units"])
+            calculation = calculate_formulation_row(initiator)
+            self.assertEqual(0.25, calculation["derived"]["moles_mmol"])
+
     def test_experiment_record_report_normalizes_notebook_rows(self) -> None:
         report = build_experiment_record_report(sample_experiment_record())
         self.assertEqual("lab-notebook-agent-experiment-record.v1", report["schema"])
@@ -722,6 +742,39 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual(10, calculation["derived"]["mass_g"])
         self.assertEqual(8, calculation["derived"]["volume_mL"])
 
+    def test_formulation_calculation_uses_molar_stock_concentration(self) -> None:
+        calculation = calculate_formulation_row(
+            {
+                "reagent_id": "I-APS",
+                "target_role": "initiator",
+                "volume_mL": "2.5",
+                "reagent_concentration": "0.1",
+                "reagent_concentration_units": "M",
+            }
+        )
+
+        self.assertEqual(0.1, calculation["observed"]["concentration"])
+        self.assertEqual("M", calculation["observed"]["concentration_units"])
+        self.assertEqual(0.25, calculation["derived"]["moles_mmol"])
+        self.assertEqual([], calculation["missing_for_calculations"])
+
+    def test_formulation_calculation_uses_mass_stock_concentration_with_mw(self) -> None:
+        calculation = calculate_formulation_row(
+            {
+                "reagent_id": "I-APS",
+                "target_role": "initiator",
+                "volume_mL": "2.0",
+                "reagent_concentration": "10",
+                "reagent_concentration_units": "mg/mL",
+                "reagent_molecular_weight_g_mol": "288.38",
+            }
+        )
+
+        self.assertEqual(0.02, calculation["derived"]["active_mass_g"])
+        self.assertAlmostEqual(0.069353, calculation["derived"]["moles_mmol"], places=6)
+        self.assertNotIn("mass_g", calculation["derived"])
+        self.assertEqual([], calculation["missing_for_calculations"])
+
     def test_formulation_normalization_derives_missing_cells(self) -> None:
         tables = {
             "Master Reagents": [
@@ -777,6 +830,36 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual(8, calculation["derived"]["active_mass_g"])
         self.assertEqual("8", updates["volume_mL"])
         self.assertEqual("80", updates["moles_mmol"])
+
+    def test_formulation_normalization_uses_master_reagent_stock_concentration(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {
+                    "reagent_id": "I-APS",
+                    "concentration": "0.1",
+                    "concentration_units": "M",
+                },
+            ],
+            "Formulations": [
+                {
+                    "experiment_id": "EP-STOCK",
+                    "reagent_id": "I-APS",
+                    "phase": "initiator feed",
+                    "target_role": "initiator",
+                    "volume_mL": "2.5",
+                    "moles_mmol": "",
+                }
+            ],
+        }
+
+        report = build_formulation_normalization_report(tables, experiment_ids=("EP-STOCK",))
+
+        updates = {row["field"]: row["value"] for row in report["runs"][0]["update_formulations"]}
+        calculation = report["runs"][0]["calculation"]
+        self.assertEqual(0.1, calculation["observed"]["concentration"])
+        self.assertEqual("M", calculation["observed"]["concentration_units"])
+        self.assertEqual(1, report["summary"]["formulation_cells_to_update"])
+        self.assertEqual("0.25", updates["moles_mmol"])
 
     def test_formulation_normalization_derives_wt_percent_from_mass_total(self) -> None:
         tables = {

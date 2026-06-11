@@ -128,7 +128,13 @@ def enrich_formulation_with_reagent(
     reagent = reagent_lookup.get(str(row.get("reagent_id", "")).strip())
     if reagent:
         enriched["reagent"] = reagent
-        for field in ("molecular_weight_g_mol", "density_g_mL", "purity_fraction"):
+        for field in (
+            "molecular_weight_g_mol",
+            "density_g_mL",
+            "purity_fraction",
+            "concentration",
+            "concentration_units",
+        ):
             enriched.setdefault(f"reagent_{field}", reagent.get(field, ""))
     return enriched
 

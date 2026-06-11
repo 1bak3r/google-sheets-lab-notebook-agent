@@ -335,10 +335,13 @@ for the same reason.
 Normalize blank formulation quantity cells when the sheet already has enough
 inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or
 `moles_mmol` values from existing formulation quantities plus `Master Reagents`
-molecular weight, density, and optional `purity_fraction` fields. Purity adjusts
-active moles from gross mass and gross mass from active moles. When at least two
-rows in an experiment have observed or derived mass, it also fills blank
-`wt_percent` cells from the total formulation mass:
+molecular weight, density, optional `purity_fraction`, and stock concentration
+fields. Molar stock units such as `M` or `mmol/mL` derive active `moles_mmol`
+from `volume_mL`; mass-concentration units such as `mg/mL` derive active mass
+and then moles when molecular weight is available. Purity adjusts active moles
+from gross mass and gross mass from active moles. When at least two rows in an
+experiment have observed or derived mass, it also fills blank `wt_percent` cells
+from the total formulation mass:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
