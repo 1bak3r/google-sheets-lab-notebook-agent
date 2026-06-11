@@ -435,6 +435,12 @@ def build_emulsion_polymerization_plan(
     if not material_audit.get("ready_for_quantitative_suggestion", False):
         prerequisites.extend(material_audit.get("recommendations", []))
 
+    planned_formulation_adjustments = formulation_adjustments_for_followup(
+        entry,
+        signals,
+        literature_context,
+    )
+
     return {
         "parent_experiment_id": experiment_id,
         "suggested_experiment_id": suggested_experiment_id,
@@ -472,6 +478,7 @@ def build_emulsion_polymerization_plan(
         "linked_evidence_ids": linked_evidence_ids,
         "literature_support": literature_plan_support(literature_context),
         "history_support": history_plan_support(historical_context),
+        "planned_formulation_adjustments": planned_formulation_adjustments,
         "sheet_rows": {
             "experiments": [
                 {
@@ -483,7 +490,12 @@ def build_emulsion_polymerization_plan(
                     "status": "planned",
                 }
             ],
-            "formulations": formulation_rows_for_followup(entry, suggested_experiment_id, variables),
+            "formulations": formulation_rows_for_followup(
+                entry,
+                suggested_experiment_id,
+                variables,
+                planned_formulation_adjustments,
+            ),
             "results_to_capture": [
                 {"measurement_type": measurement, "units": suggested_units(measurement)}
                 for measurement in (
@@ -530,16 +542,173 @@ def history_plan_support(historical_context: dict[str, Any] | None) -> dict[str,
     }
 
 
+def formulation_adjustments_for_followup(
+    entry: dict[str, Any],
+    signals: set[str],
+    literature_context: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    formulation = [row for row in entry.get("formulation", []) or [] if isinstance(row, dict)]
+    adjustments: list[dict[str, Any]] = []
+    literature_tags = {str(tag) for tag in (literature_context or {}).get("relevance_tags", [])}
+
+    surfactant = first_formulation_row(formulation, {"surfactant"})
+    monomer = first_formulation_row(formulation, {"core_monomer", "shell_monomer", "comonomer", "monomer"})
+    initiator = first_formulation_row(formulation, {"initiator"})
+
+    if "particle_size_high" in signals:
+        surfactant_basis = first_numeric_field(surfactant[1] if surfactant else {}, ("mass_g", "wt_percent"))
+        if surfactant and surfactant_basis:
+            adjustment = scaled_formulation_adjustment(
+                surfactant[0],
+                surfactant[1],
+                surfactant_basis,
+                1.15,
+                (
+                    "Particle size is above target; modestly increase surfactant "
+                    "active basis for the follow-up."
+                ),
+            )
+            if adjustment:
+                adjustments.append(adjustment)
+        else:
+            feed_reason = (
+                "Particle size is above target and no numeric surfactant basis "
+                "is available; slow the monomer feed for the follow-up."
+            )
+            if "feed" in literature_tags:
+                feed_reason += " Linked evidence also flags feed/nucleation sensitivity."
+            adjustment = scaled_formulation_adjustment(
+                monomer[0] if monomer else 0,
+                monomer[1] if monomer else {},
+                "feed_duration_min",
+                1.25,
+                feed_reason,
+            )
+            if adjustment:
+                adjustments.append(adjustment)
+            elif surfactant:
+                adjustments.append(
+                    note_formulation_adjustment(
+                        surfactant[0],
+                        surfactant[1],
+                        (
+                            "No numeric surfactant basis or monomer feed duration "
+                            "was available; review a +10-20% surfactant active-basis "
+                            "arm before execution."
+                        ),
+                    )
+                )
+
+    if ("coagulum" in signals or "instability" in signals) and surfactant:
+        adjustments.append(
+            note_formulation_adjustment(
+                surfactant[0],
+                surfactant[1],
+                (
+                    "Coagulum or instability was observed; review whether a mixed "
+                    "ionic/nonionic surfactant package should be tested at the same "
+                    "active basis."
+                ),
+            )
+        )
+
+    if "low_conversion" in signals and initiator:
+        adjustments.append(
+            note_formulation_adjustment(
+                initiator[0],
+                initiator[1],
+                (
+                    "Low conversion was detected; verify initiator freshness, purge "
+                    "quality, and whether a chase feed is needed after reproducing "
+                    "the baseline."
+                ),
+            )
+        )
+
+    return adjustments
+
+
+def first_formulation_row(
+    formulation: list[dict[str, Any]],
+    target_roles: set[str],
+) -> tuple[int, dict[str, Any]] | None:
+    for index, row in enumerate(formulation, start=1):
+        target_role = str(row.get("target_role", "")).strip().lower()
+        reagent_category = str(row.get("reagent_category", "")).strip().lower()
+        nested_reagent = row.get("reagent") if isinstance(row.get("reagent"), dict) else {}
+        nested_category = str(nested_reagent.get("category", "")).strip().lower()
+        if target_role in target_roles or reagent_category in target_roles or nested_category in target_roles:
+            return index, row
+    return None
+
+
+def first_numeric_field(row: dict[str, Any], fields: tuple[str, ...]) -> str:
+    for field in fields:
+        if coerce_float(row.get(field)) is not None:
+            return field
+    return ""
+
+
+def scaled_formulation_adjustment(
+    source_index: int,
+    row: dict[str, Any],
+    field: str,
+    scale_factor: float,
+    rationale: str,
+) -> dict[str, Any] | None:
+    value = coerce_float(row.get(field))
+    if source_index <= 0 or value is None:
+        return None
+    proposed = format_numeric_for_sheet(value * scale_factor)
+    return {
+        "source_index": source_index,
+        "reagent_id": row.get("reagent_id", ""),
+        "target_role": row.get("target_role", ""),
+        "field": field,
+        "parent_value": row.get(field, ""),
+        "proposed_value": proposed,
+        "scale_factor": scale_factor,
+        "rationale": rationale,
+    }
+
+
+def note_formulation_adjustment(
+    source_index: int,
+    row: dict[str, Any],
+    note: str,
+) -> dict[str, Any]:
+    return {
+        "source_index": source_index,
+        "reagent_id": row.get("reagent_id", ""),
+        "target_role": row.get("target_role", ""),
+        "field": "notes",
+        "parent_value": row.get("notes", ""),
+        "proposed_value": note,
+        "rationale": note,
+    }
+
+
+def format_numeric_for_sheet(value: float) -> str:
+    return f"{value:.6g}"
+
+
 def formulation_rows_for_followup(
     entry: dict[str, Any],
     suggested_experiment_id: str,
     variables: list[dict[str, Any]],
+    planned_adjustments: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     factor_text = ", ".join(str(variable.get("factor", "")) for variable in variables if variable.get("factor"))
+    adjustments_by_index: dict[int, list[dict[str, Any]]] = {}
+    for adjustment in planned_adjustments or []:
+        source_index = int(adjustment.get("source_index", 0) or 0)
+        if source_index:
+            adjustments_by_index.setdefault(source_index, []).append(adjustment)
     rows = []
     for index, source_row in enumerate(entry.get("formulation", []) or [], start=1):
         if not isinstance(source_row, dict):
             continue
+        row_adjustments = adjustments_by_index.get(index, [])
         row = {
             "experiment_id": suggested_experiment_id,
             "reagent_id": source_row.get("reagent_id", ""),
@@ -554,20 +723,55 @@ def formulation_rows_for_followup(
             "feed_order": source_row.get("feed_order", index),
             "feed_start_min": source_row.get("feed_start_min", ""),
             "feed_duration_min": source_row.get("feed_duration_min", ""),
-            "notes": followup_formulation_note(source_row, factor_text),
+            "notes": followup_formulation_note(source_row, factor_text, row_adjustments),
         }
+        for adjustment in row_adjustments:
+            field = str(adjustment.get("field", ""))
+            if field in row and field != "notes":
+                row[field] = adjustment.get("proposed_value", row[field])
         if row["reagent_id"] and row["target_role"]:
             rows.append(row)
     return rows
 
 
-def followup_formulation_note(source_row: dict[str, Any], factor_text: str) -> str:
+def followup_formulation_note(
+    source_row: dict[str, Any],
+    factor_text: str,
+    adjustments: list[dict[str, Any]] | None = None,
+) -> str:
     source_note = str(source_row.get("notes", "")).strip()
     parts = [
         "Draft follow-up row copied from parent formulation; verify quantities before running.",
     ]
     if factor_text:
         parts.append(f"Planned variables: {factor_text}.")
+    field_adjustments = [
+        adjustment
+        for adjustment in adjustments or []
+        if str(adjustment.get("field", "")) != "notes"
+    ]
+    note_adjustments = [
+        adjustment
+        for adjustment in adjustments or []
+        if str(adjustment.get("field", "")) == "notes"
+    ]
+    if field_adjustments:
+        parts.append(
+            "Applied planned adjustments: "
+            + "; ".join(
+                (
+                    f"{adjustment.get('field', '')} "
+                    f"{adjustment.get('parent_value', '')} -> "
+                    f"{adjustment.get('proposed_value', '')}"
+                )
+                for adjustment in field_adjustments
+            )
+            + "."
+        )
+    for adjustment in note_adjustments:
+        proposed_note = str(adjustment.get("proposed_value", "")).strip()
+        if proposed_note:
+            parts.append(f"Review note: {proposed_note}")
     if source_note:
         parts.append(f"Parent notes: {source_note}")
     return " ".join(parts)

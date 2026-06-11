@@ -516,6 +516,14 @@ draft `Formulations`, and expected `Results` rows from the stored
 `proposed_plan_json`; the same batch updates the accepted suggestion status to
 `run_planned`:
 
+For emulsion-polymerization suggestions, the stored plan may include
+`planned_formulation_adjustments`. These are conservative row-level changes
+derived from result/literature signals, such as a +15% surfactant basis when a
+numeric surfactant row exists, or a slower monomer feed when particle size is
+high and no numeric surfactant basis is available. The materialized
+`Formulations` rows include the proposed value plus notes for human review
+before execution.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli materialize-accepted-plans \
   --snapshot artifacts/live-sheet-snapshot.json \

@@ -946,6 +946,36 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("particle_size_nm", plan["measurements"])
         self.assertTrue(plan["prerequisites"])
         self.assertEqual("planned", plan["sheet_rows"]["experiments"][0]["status"])
+        adjustments = plan["planned_formulation_adjustments"]
+        self.assertEqual("feed_duration_min", adjustments[0]["field"])
+        self.assertEqual("180", str(adjustments[0]["parent_value"]))
+        self.assertEqual("225", adjustments[0]["proposed_value"])
+        formulation_by_role = {
+            row["target_role"]: row
+            for row in plan["sheet_rows"]["formulations"]
+        }
+        self.assertEqual("225", formulation_by_role["core_monomer"]["feed_duration_min"])
+        self.assertIn("Applied planned adjustments", formulation_by_role["core_monomer"]["notes"])
+
+    def test_structured_emulsion_plan_adjusts_numeric_surfactant_basis(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["formulation"][1]["mass_g"] = "0.20"
+        suggestion = build_recommendation(entry)
+        plan = suggestion["proposed_experiment_plan"]
+        adjustments = plan["planned_formulation_adjustments"]
+        surfactant_adjustment = next(
+            adjustment
+            for adjustment in adjustments
+            if adjustment["target_role"] == "surfactant" and adjustment["field"] == "mass_g"
+        )
+        self.assertEqual("0.20", surfactant_adjustment["parent_value"])
+        self.assertEqual("0.23", surfactant_adjustment["proposed_value"])
+        formulation_by_role = {
+            row["target_role"]: row
+            for row in plan["sheet_rows"]["formulations"]
+        }
+        self.assertEqual("0.23", formulation_by_role["surfactant"]["mass_g"])
+        self.assertEqual(180, formulation_by_role["core_monomer"]["feed_duration_min"])
 
     def test_agent_report_appends_evidence_and_linked_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1896,6 +1926,7 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("2026-06-10", workbook["Experiments"]["B3"].value)
             self.assertEqual("EP-001-FUP-001", workbook["Formulations"]["A5"].value)
             self.assertEqual("M-SKA", workbook["Formulations"]["B5"].value)
+            self.assertEqual("225", workbook["Formulations"]["M5"].value)
             self.assertEqual("particle_size_nm", workbook["Results"]["C3"].value)
             self.assertEqual("run_planned", workbook["Agent Suggestions"]["M2"].value)
 

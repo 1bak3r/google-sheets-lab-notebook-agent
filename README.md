@@ -573,15 +573,21 @@ reviewable before execution:
   influenced the recommendation.
 - `history_support` with same-process prior experiments, result benchmarks, and
   notebook-history guidance used as controls or comparison points.
+- `planned_formulation_adjustments` with source row, field, parent value,
+  proposed value, scale factor, and rationale for any conservative row-level
+  quantity or feed-profile changes.
 - `sheet_rows` with draft `Experiments` values, copied/reviewable
   `Formulations` rows, and expected `Results` measurements to capture.
 
 For emulsion polymerization entries, the plan isolates particle-size,
 coagulum/stability, and conversion signals into controlled follow-up variables
 such as surfactant package, surfactant active basis, monomer feed duration, and
-initiator/process-health checks. Quantitative changes stay gated by the material
-audit until reagent roles, masses, volumes, molecular weights, and densities are
-complete enough for a defensible formulation.
+initiator/process-health checks. Quantitative dosage changes stay gated by the
+available material data so blank quantities are not invented. When the source
+row has a numeric surfactant basis, high particle size proposes a modest
+surfactant-basis increase; otherwise the draft row slows monomer feed when feed
+duration is available and records review notes when only qualitative action is
+defensible.
 
 After a human reviews a suggestion, set its `status` to `accepted` in
 `Agent Suggestions`. The materializer turns accepted suggestions into concrete
