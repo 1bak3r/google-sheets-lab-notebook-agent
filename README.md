@@ -59,7 +59,9 @@ automation.
 Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
-`default_litscout_limit`. Non-default CLI arguments still take precedence.
+`default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
+confidence required before a draft is appended. Non-default CLI arguments still
+take precedence.
 
 ## LitScout Bridge
 
@@ -126,6 +128,10 @@ support a recommendation without being renamed.
 Each run records `litscout_status`. If the LitScout CLI is missing or returns a
 non-zero status, the report marks that experiment `skipped` with
 `skip_reason: litscout_failed` and does not append an ungrounded suggestion.
+If a generated recommendation falls below `suggestion_confidence_floor`, the run
+is marked `skipped` with `skip_reason: suggestion_confidence_below_floor`; the
+suppressed draft remains in the JSON report for audit but is not appended to
+`Agent Suggestions`.
 When evidence rows are present, the recommendation also includes a
 `literature_context` block with evidence IDs, relevance tag counts, concise
 findings, and guidance inferred from tags or finding text.

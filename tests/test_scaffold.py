@@ -1284,6 +1284,32 @@ class ScaffoldTests(unittest.TestCase):
             self.assertNotIn("context_limit", report["agent_config"]["applied_overrides"])
             self.assertTrue(report["runs"][0]["notebook_context_matches"])
 
+    def test_agent_config_confidence_floor_skips_low_confidence_suggestion(self) -> None:
+        tables = low_confidence_agent_tables(confidence_floor="medium")
+
+        report = build_agent_report(tables, AgentRunConfig(experiment_ids=("GEN-001",)))
+
+        run = report["runs"][0]
+        self.assertEqual("skipped", run["status"])
+        self.assertEqual("suggestion_confidence_below_floor", run["skip_reason"])
+        self.assertEqual("low", run["suggestion_confidence"])
+        self.assertEqual("medium", run["suggestion_confidence_floor"])
+        self.assertEqual(0, report["summary"]["suggestion_rows_to_append"])
+        self.assertEqual(1, report["summary"]["confidence_below_floor"])
+        self.assertEqual([], run["append_agent_suggestions"])
+        self.assertEqual("low", run["suppressed_suggestion"]["confidence"])
+
+    def test_agent_config_low_confidence_floor_allows_low_confidence_suggestion(self) -> None:
+        tables = low_confidence_agent_tables(confidence_floor="low")
+
+        report = build_agent_report(tables, AgentRunConfig(experiment_ids=("GEN-001",)))
+
+        run = report["runs"][0]
+        self.assertEqual("ready", run["status"])
+        self.assertEqual("low", run["suggestion_confidence"])
+        self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+        self.assertEqual("low", run["append_agent_suggestions"][0]["confidence"])
+
     def test_daily_review_selects_experiments_by_date_and_log_timestamp(self) -> None:
         tables = {
             "Experiments": [
@@ -2375,6 +2401,29 @@ def complete_template_materials(tables: dict[str, list[dict[str, object]]]) -> N
             row["mass_g"] = "0.2"
         if row["reagent_id"] == "S-SDS":
             row["mass_g"] = "0.1"
+
+
+def low_confidence_agent_tables(confidence_floor: str) -> dict[str, list[dict[str, object]]]:
+    return {
+        "Experiments": [
+            {
+                "experiment_id": "GEN-001",
+                "date": "2026-06-09",
+                "process_type": "miscellaneous screening",
+                "objective": "Capture an exploratory note without process-specific outcome signals.",
+                "status": "complete",
+            }
+        ],
+        "Master Reagents": [],
+        "Formulations": [],
+        "Daily Log": [],
+        "Results": [],
+        "Literature Evidence": [],
+        "Agent Suggestions": [],
+        "Agent Config": [
+            {"key": "suggestion_confidence_floor", "value": confidence_floor, "notes": ""},
+        ],
+    }
 
 
 def validations_by_range(worksheet: object) -> dict[str, str]:

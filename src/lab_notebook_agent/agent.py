@@ -34,6 +34,7 @@ class AgentRunConfig:
     context_limit: int = 5
     history_limit: int = 5
     evidence_limit: int = 3
+    suggestion_confidence_floor: str = "low"
     force: bool = False
     litscout_export: str | None = None
     run_litscout: bool = False
@@ -50,6 +51,7 @@ AGENT_CONFIG_FIELDS = {
     "default_litscout_sources": ("litscout_sources", "string"),
     "default_litscout_depth": ("litscout_depth", "string"),
     "default_litscout_limit": ("litscout_limit", "nonnegative_int"),
+    "suggestion_confidence_floor": ("suggestion_confidence_floor", "confidence"),
 }
 
 
@@ -135,20 +137,44 @@ def build_agent_report(
                 entry["literature_evidence"] = new_evidence
 
         suggestion = build_recommendation(entry, index)
+        evidence_rows_to_append = rows_not_present(
+            new_evidence,
+            existing_rows=tables.get("Literature Evidence", []),
+            key="evidence_id",
+        )
+        suggestion_confidence = normalized_confidence(suggestion.get("confidence", ""))
+        confidence_floor = normalized_confidence(config.suggestion_confidence_floor)
+        if confidence_below_floor(suggestion_confidence, confidence_floor):
+            runs.append(
+                {
+                    "experiment_id": experiment_id,
+                    "status": "skipped",
+                    "skip_reason": "suggestion_confidence_below_floor",
+                    "suggestion_confidence": suggestion_confidence,
+                    "suggestion_confidence_floor": confidence_floor,
+                    "suppressed_suggestion": suggestion,
+                    "litscout_query": query,
+                    "litscout_export": litscout_export_path or "",
+                    "litscout_status": litscout_status,
+                    "notebook_context_matches": notebook_matches,
+                    "historical_context": historical_context,
+                    "append_literature_evidence": evidence_rows_to_append,
+                    "append_agent_suggestions": [],
+                }
+            )
+            continue
         runs.append(
             {
                 "experiment_id": experiment_id,
                 "status": "ready",
+                "suggestion_confidence": suggestion_confidence,
+                "suggestion_confidence_floor": confidence_floor,
                 "litscout_query": query,
                 "litscout_export": litscout_export_path or "",
                 "litscout_status": litscout_status,
                 "notebook_context_matches": notebook_matches,
                 "historical_context": historical_context,
-                "append_literature_evidence": rows_not_present(
-                    new_evidence,
-                    existing_rows=tables.get("Literature Evidence", []),
-                    key="evidence_id",
-                ),
+                "append_literature_evidence": evidence_rows_to_append,
                 "append_agent_suggestions": [suggestion],
             }
         )
@@ -365,6 +391,11 @@ def parse_agent_config_value(key: str, value: Any, value_type: str) -> tuple[Any
         if parsed < 0:
             return None, {"key": key, "value": text, "message": "Expected a non-negative integer."}
         return parsed, None
+    if value_type == "confidence":
+        normalized = normalized_confidence(text)
+        if not normalized:
+            return None, {"key": key, "value": text, "message": "Expected one of low, medium, or high."}
+        return normalized, None
     return None, {"key": key, "value": text, "message": f"Unsupported Agent Config value type {value_type!r}."}
 
 
@@ -375,6 +406,20 @@ def litscout_command_config(config: AgentRunConfig) -> dict[str, Any]:
         "limit": config.litscout_limit,
         "artifacts_dir": config.artifacts_dir,
     }
+
+
+CONFIDENCE_RANK = {"low": 1, "medium": 2, "high": 3}
+
+
+def normalized_confidence(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text if text in CONFIDENCE_RANK else ""
+
+
+def confidence_below_floor(confidence: str, floor: str) -> bool:
+    confidence_rank = CONFIDENCE_RANK.get(confidence, 0)
+    floor_rank = CONFIDENCE_RANK.get(floor, CONFIDENCE_RANK["low"])
+    return confidence_rank < floor_rank
 
 
 def selected_experiment_ids(
@@ -659,5 +704,8 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, int]:
             for run in runs
             if isinstance(run.get("litscout_status"), dict)
             and run["litscout_status"].get("status") == "failed"
+        ),
+        "confidence_below_floor": sum(
+            1 for run in runs if run.get("skip_reason") == "suggestion_confidence_below_floor"
         ),
     }

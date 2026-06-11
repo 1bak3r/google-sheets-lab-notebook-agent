@@ -476,13 +476,19 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run-snapshot \
 Agent runs read supported `Agent Config` defaults from the live snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
-`default_litscout_limit`. Non-default CLI arguments still take precedence, and
-generated LitScout command text uses the effective LitScout settings.
+`default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
+confidence required before a draft is appended. Non-default CLI arguments still
+take precedence, and generated LitScout command text uses the effective
+LitScout settings.
 
 The report records `litscout_status` for each experiment. If the LitScout CLI is
 missing or a search/export command fails, that experiment is marked `skipped`
 with `skip_reason: litscout_failed`, and no Literature Evidence or Agent
 Suggestions rows are emitted for it.
+If a generated recommendation falls below `suggestion_confidence_floor`, the run
+is marked `skipped` with `skip_reason: suggestion_confidence_below_floor`; the
+suppressed draft remains in the JSON report for audit but is not appended to
+`Agent Suggestions`.
 Existing reviewed evidence is reused when a `Literature Evidence.evidence_id`
 uses the generated `LIT-{experiment_id}-...` prefix or when that evidence ID is
 listed in `Experiments.linked_literature_ids`.
