@@ -470,6 +470,9 @@ The report records `litscout_status` for each experiment. If the LitScout CLI is
 missing or a search/export command fails, that experiment is marked `skipped`
 with `skip_reason: litscout_failed`, and no Literature Evidence or Agent
 Suggestions rows are emitted for it.
+Existing reviewed evidence is reused when a `Literature Evidence.evidence_id`
+uses the generated `LIT-{experiment_id}-...` prefix or when that evidence ID is
+listed in `Experiments.linked_literature_ids`.
 When evidence is available, each suggestion includes `literature_context`, and
 the proposed plan includes `literature_support` so reviewers can see which tags
 and findings influenced the follow-up.

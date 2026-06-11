@@ -351,11 +351,28 @@ def suggestions_for_experiment(tables: dict[str, list[dict[str, Any]]], experime
 
 def evidence_for_experiment(tables: dict[str, list[dict[str, Any]]], experiment_id: str) -> list[dict[str, Any]]:
     prefix = f"LIT-{slugify(experiment_id).upper().replace('/', '-')}-"
-    return [
-        row
-        for row in tables.get("Literature Evidence", [])
-        if str(row.get("evidence_id", "")).startswith(prefix)
-    ]
+    linked_ids = set(literature_ids_linked_to_experiment(tables, experiment_id))
+    seen: set[str] = set()
+    rows = []
+    for row in tables.get("Literature Evidence", []):
+        evidence_id = str(row.get("evidence_id", "")).strip()
+        if not evidence_id or evidence_id in seen:
+            continue
+        if evidence_id.startswith(prefix) or evidence_id in linked_ids:
+            rows.append(row)
+            seen.add(evidence_id)
+    return rows
+
+
+def literature_ids_linked_to_experiment(
+    tables: dict[str, list[dict[str, Any]]],
+    experiment_id: str,
+) -> list[str]:
+    ids: list[str] = []
+    for row in tables.get("Experiments", []):
+        if str(row.get("experiment_id", "")).strip() == experiment_id:
+            ids.extend(split_literature_ids(row.get("linked_literature_ids", "")))
+    return unique_ids(ids)
 
 
 def rows_not_present(

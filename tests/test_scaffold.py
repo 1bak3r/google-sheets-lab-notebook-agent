@@ -1001,6 +1001,34 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn("Master Reagents", context_sheets)
             self.assertIn("Process Knowledge", context_sheets)
 
+    def test_agent_report_uses_experiment_linked_literature_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            tables["Experiments"][0]["linked_literature_ids"] = "LIT-MANUAL-SURF-001"
+            tables["Literature Evidence"].append(
+                {
+                    "evidence_id": "LIT-MANUAL-SURF-001",
+                    "source": "manual",
+                    "title": "Reviewed surfactant package note",
+                    "finding": "Mixed surfactant packages can improve latex stability and particle size.",
+                    "relevance_tags": "surfactant,particle_size,stability",
+                    "confidence": "medium",
+                }
+            )
+            report = build_agent_report(tables, AgentRunConfig(experiment_ids=("EP-001",)))
+            run = report["runs"][0]
+            self.assertEqual("ready", run["status"])
+            self.assertEqual("existing_evidence", run["litscout_status"]["status"])
+            self.assertEqual([], run["append_literature_evidence"])
+            self.assertEqual(0, report["summary"]["evidence_rows_to_append"])
+            self.assertEqual(0, report["summary"]["experiment_cells_to_update"])
+            suggestion = run["append_agent_suggestions"][0]
+            self.assertEqual(["LIT-MANUAL-SURF-001"], suggestion["linked_evidence_ids"])
+            self.assertEqual(
+                ["LIT-MANUAL-SURF-001"],
+                suggestion["proposed_experiment_plan"]["literature_support"]["evidence_ids"],
+            )
+
     def test_agent_report_includes_prior_result_history_in_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))

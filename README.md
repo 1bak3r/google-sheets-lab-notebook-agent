@@ -108,6 +108,12 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
   --report-output artifacts/agent-run-ep-001-live-litscout.json
 ```
 
+Existing reviewed evidence is reused before a new LitScout search/export. The
+agent recognizes rows whose `evidence_id` uses the generated
+`LIT-{experiment_id}-...` prefix, and it also follows IDs listed in
+`Experiments.linked_literature_ids`, so manual or curated evidence rows can
+support a recommendation without being renamed.
+
 Each run records `litscout_status`. If the LitScout CLI is missing or returns a
 non-zero status, the report marks that experiment `skipped` with
 `skip_reason: litscout_failed` and does not append an ungrounded suggestion.
