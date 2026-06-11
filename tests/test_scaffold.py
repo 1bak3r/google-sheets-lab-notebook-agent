@@ -1290,6 +1290,34 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(2, suggestion["literature_context"]["evidence_count"])
             self.assertNotIn("LIT-OFF-001", suggestion["linked_evidence_ids"])
 
+    def test_agent_report_links_selected_existing_evidence_when_suggestion_suppressed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            tables["Experiments"][0]["linked_literature_ids"] = ""
+            tables["Literature Evidence"].append(
+                {
+                    "evidence_id": "LIT-EP-001-777",
+                    "source": "manual",
+                    "title": "Surfactant and particle-size control",
+                    "finding": "Surfactant active basis can reduce coagulum and latex particle size.",
+                    "relevance_tags": "surfactant,particle_size,stability",
+                    "confidence": "high",
+                }
+            )
+
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",), suggestion_confidence_floor="high"),
+            )
+
+            run = report["runs"][0]
+            self.assertEqual("skipped", run["status"])
+            self.assertEqual("suggestion_confidence_below_floor", run["skip_reason"])
+            self.assertEqual(["LIT-EP-001-777"], run["selected_literature_evidence_ids"])
+            self.assertEqual([], run["append_agent_suggestions"])
+            self.assertEqual("linked_literature_ids", report["update_experiments"][0]["field"])
+            self.assertEqual("LIT-EP-001-777", report["update_experiments"][0]["value"])
+
     def test_agent_report_includes_prior_result_history_in_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))

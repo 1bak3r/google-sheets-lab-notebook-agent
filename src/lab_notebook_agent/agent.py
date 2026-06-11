@@ -737,6 +737,7 @@ def build_agent_experiment_updates(
 
 def linked_literature_ids_for_run(run: dict[str, Any]) -> list[str]:
     ids = []
+    ids.extend(split_literature_ids(run.get("selected_literature_evidence_ids", [])))
     for evidence in run.get("append_literature_evidence", []) or []:
         if isinstance(evidence, dict):
             ids.extend(split_literature_ids(evidence.get("evidence_id", "")))
