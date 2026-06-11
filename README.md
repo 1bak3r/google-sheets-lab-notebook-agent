@@ -129,9 +129,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary \
   --output artifacts/daily-summary-2026-06-09.json
 ```
 
-The summary reports observations, normalized Results rows, issue tags, material
-audit status, open suggestions, and next actions for each experiment selected on
-that date.
+The summary reports observations, normalized Results rows, issue tags,
+target-based result analysis, limiting metrics, material audit status, open
+suggestions, and next actions for each experiment selected on that date.
 
 Before running or reviewing one experiment, use `experiment-preflight` to check
 the notebook rows that the agent depends on:
@@ -322,10 +322,12 @@ The combined run includes an `experiment_reviews` block for each selected
 experiment. Each review embeds the same `experiment-preflight` and
 `search-materials` reports so the daily run can show both the result-driven next
 experiment suggestion and the notebook/material gaps that would make that
-suggestion hard to execute. It also includes `daily_log_results_report`, and the
-snapshot batch appends those normalized Results rows before literature evidence
-and agent suggestions, then appends the compact Daily Reviews status row and
-updates the selected Experiments row.
+suggestion hard to execute. The daily summary also carries result-analysis
+signals and limiting metrics so the compact Daily Reviews next-actions list can
+call out outcome limits before a user accepts a follow-up. It also includes
+`daily_log_results_report`, and the snapshot batch appends those normalized
+Results rows before literature evidence and agent suggestions, then appends the
+compact Daily Reviews status row and updates the selected Experiments row.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \

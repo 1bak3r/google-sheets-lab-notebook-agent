@@ -22,6 +22,7 @@ from lab_notebook_agent.daily_log_results import (
     apply_daily_log_results_report_to_workbook,
     build_daily_log_results_report,
 )
+from lab_notebook_agent.daily_reviews import daily_review_row_from_run
 from lab_notebook_agent.experiment_record import (
     apply_experiment_record_report_to_workbook,
     build_experiment_record_report,
@@ -1239,6 +1240,15 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, report["summary"]["result_count"])
             experiment = report["experiments"][0]
             self.assertIn("coagulum", experiment["issue_tags"])
+            self.assertIn("particle_size_high", experiment["result_signals"])
+            self.assertEqual(["EP-001"], report["summary"]["experiments_with_result_limits"])
+            self.assertEqual(1, report["summary"]["result_limiting_metric_count"])
+            self.assertEqual("particle_size", experiment["limiting_metrics"][0]["metric_key"])
+            self.assertIn("Outcome limits", experiment["result_analysis_summary"])
+            self.assertTrue(
+                any("Review result limits" in action for action in experiment["next_actions"]),
+                experiment["next_actions"],
+            )
             self.assertFalse(experiment["ready_for_quantitative_suggestion"])
             self.assertTrue(experiment["material_recommendations"])
 
@@ -1355,12 +1365,29 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("lab-notebook-agent-daily-log-results.v1", run["daily_log_results_report"]["schema"])
             self.assertEqual(1, run["summary"]["experiment_review_count"])
             self.assertEqual(2, run["summary"]["preflight_fail_count"])
+            self.assertEqual(1, run["summary"]["result_limiting_metric_count"])
+            self.assertEqual(["EP-001"], run["summary"]["experiments_with_result_limits"])
             review = run["experiment_reviews"][0]
             self.assertEqual("EP-001", review["experiment_id"])
             self.assertEqual("lab-notebook-agent-experiment-preflight.v1", review["preflight"]["schema"])
             self.assertEqual("lab-notebook-agent-process-material-search.v1", review["material_search"]["schema"])
             roles = {role["role_group"]: role for role in review["material_search"]["roles"]}
             self.assertEqual("M-SKA", roles["monomer"]["candidate_reagents"][0]["reagent_id"])
+
+    def test_daily_review_row_includes_result_limit_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            run = build_daily_agent_run(
+                load_workbook_tables(workbook_path),
+                AgentRunConfig(review_date="2026-06-09", litscout_export=str(works_path)),
+            )
+            review_row = daily_review_row_from_run(run)
+            actions = json.loads(review_row["next_actions_json"])
+            self.assertTrue(
+                any(action.startswith("Review result limits for EP-001") for action in actions),
+                actions,
+            )
 
     def test_snapshot_daily_agent_run_includes_audit_and_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

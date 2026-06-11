@@ -366,8 +366,8 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary \
   --output artifacts/live-sheet-daily-summary.json
 ```
 
-Review material gaps, measurements, issue tags, and open suggestions before
-applying new rows.
+Review material gaps, measurements, target-based result-analysis summaries,
+limiting metrics, issue tags, and open suggestions before applying new rows.
 
 To run the daily summary and suggestion agent together, use the combined daily
 agent command. It writes pending normalized Results rows, the same read-only
@@ -402,9 +402,11 @@ then update the selected Experiments row.
 
 The combined run's `experiment_reviews` block can replace separate
 `experiment-preflight` and `search-materials` calls when you want one daily
-review artifact for the sheet. Its `daily_log_results_report` block can also
-replace the standalone `normalize-daily-log-results` command when you want one
-audited batch for the day.
+review artifact for the sheet. The Daily Reviews next-actions JSON also carries
+the first result-limit guidance for experiments with out-of-target measurements.
+Its `daily_log_results_report` block can also replace the standalone
+`normalize-daily-log-results` command when you want one audited batch for the
+day.
 
 ## 6. Scaffold Starter Materials
 
