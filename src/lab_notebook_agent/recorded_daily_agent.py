@@ -14,6 +14,7 @@ from .google_sheets import (
     snapshot_to_tables,
     validate_snapshot,
 )
+from .material_scaffold import formulation_key
 from .sheets import append_rows_to_workbook, load_workbook_tables, update_workbook_rows_by_key
 
 
@@ -122,6 +123,11 @@ def apply_recorded_daily_agent_run_to_workbook(
         update_workbook_rows_by_key(current, "Master Reagents", master_reagent_updates, output_path=destination)
         current = destination
 
+    formulation_updates = dict_rows(apply_report.get("update_formulations", []))
+    if formulation_updates:
+        update_workbook_rows_by_key(current, "Formulations", formulation_updates, output_path=destination)
+        current = destination
+
     run_rows = dict_rows(apply_report.get("runs", []))
     result_rows = nested_report_rows(run_rows, "append_results")
     if result_rows:
@@ -160,7 +166,12 @@ def build_recorded_daily_apply_report(
 ) -> dict[str, Any]:
     daily_apply_report = build_daily_apply_report(daily_run)
     experiment_rows = [dict(row) for row in record_report.get("append_experiments", []) if isinstance(row, dict)]
+    formulation_rows = [dict(row) for row in record_report.get("append_formulations", []) if isinstance(row, dict)]
     updates = merge_new_experiment_updates(experiment_rows, daily_apply_report.get("update_experiments", []))
+    formulation_updates, formulation_updates_merged = merge_new_formulation_updates(
+        formulation_rows,
+        daily_apply_report.get("update_formulations", []),
+    )
     daily_summary = daily_apply_report.get("summary", {}) if isinstance(daily_apply_report.get("summary"), dict) else {}
     record_summary = record_report.get("summary", {}) if isinstance(record_report.get("summary"), dict) else {}
     return {
@@ -170,6 +181,8 @@ def build_recorded_daily_apply_report(
             "master_reagent_cells_to_update": int(record_summary.get("master_reagent_cells_to_update", 0) or 0),
             "experiment_rows_to_append": len(experiment_rows),
             "formulation_rows_to_append": int(record_summary.get("formulation_rows_to_append", 0) or 0),
+            "formulation_cells_to_update": len(formulation_updates),
+            "formulation_cells_merged_into_append": formulation_updates_merged,
             "daily_log_rows_to_append": int(record_summary.get("daily_log_rows_to_append", 0) or 0),
             "record_result_rows_to_append": int(record_summary.get("result_rows_to_append", 0) or 0),
             "normalized_result_rows_to_append": int(daily_summary.get("result_rows_to_append", 0) or 0),
@@ -182,7 +195,8 @@ def build_recorded_daily_apply_report(
         "append_master_reagents": record_report.get("append_master_reagents", []),
         "update_master_reagents": record_report.get("update_master_reagents", []),
         "append_experiments": experiment_rows,
-        "append_formulations": record_report.get("append_formulations", []),
+        "append_formulations": formulation_rows,
+        "update_formulations": formulation_updates,
         "append_daily_log": record_report.get("append_daily_log", []),
         "append_results": record_report.get("append_results", []),
         "append_daily_reviews": daily_apply_report.get("append_daily_reviews", []),
@@ -212,6 +226,30 @@ def merge_new_experiment_updates(
             continue
         remaining.append(update)
     return remaining
+
+
+def merge_new_formulation_updates(
+    formulation_rows: list[dict[str, Any]],
+    updates: Any,
+) -> tuple[list[dict[str, Any]], int]:
+    rows_by_key = {formulation_key(row): row for row in formulation_rows}
+    remaining: list[dict[str, Any]] = []
+    merged = 0
+    for update in updates or []:
+        if not isinstance(update, dict):
+            continue
+        update_key = (
+            str(update.get("experiment_id", "")).strip(),
+            str(update.get("reagent_id", "")).strip(),
+            str(update.get("target_role", "")).strip(),
+        )
+        target_field = str(update.get("field", "")).strip()
+        if update_key in rows_by_key and target_field:
+            rows_by_key[update_key][target_field] = update.get("value", "")
+            merged += 1
+            continue
+        remaining.append(update)
+    return remaining, merged
 
 
 def dict_rows(value: Any) -> list[dict[str, Any]]:
@@ -306,4 +344,6 @@ def combined_recorded_summary(
         "suggestion_rows_to_append": int(daily_summary.get("suggestion_rows_to_append", 0) or 0),
         "daily_review_rows_to_append": int(apply_summary.get("daily_review_rows_to_append", 0) or 0),
         "experiment_cells_to_update": int(apply_summary.get("experiment_cells_to_update", 0) or 0),
+        "formulation_cells_to_update": int(apply_summary.get("formulation_cells_to_update", 0) or 0),
+        "formulation_cells_merged_into_append": int(apply_summary.get("formulation_cells_merged_into_append", 0) or 0),
     }

@@ -534,6 +534,48 @@ class ScaffoldTests(unittest.TestCase):
                 "LIT-EP-010-001",
                 run["apply_report"]["append_experiments"][0]["linked_literature_ids"],
             )
+
+    def test_recorded_daily_agent_merges_normalized_formulations_into_appended_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            record = sample_experiment_record()
+            record["formulation"][0]["reagent"] = {
+                "reagent_id": "S-SDS",
+                "density_g_mL": "1.4",
+                "purity_fraction": "0.5",
+            }
+            snapshot = snapshot_from_tables(
+                tables,
+                {
+                    "Master Reagents": 100,
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Daily Log": 104,
+                    "Results": 102,
+                    "Agent Suggestions": 222,
+                    "Daily Reviews": 333,
+                },
+            )
+
+            run = build_snapshot_recorded_daily_agent_run(
+                snapshot,
+                record,
+                AgentRunConfig(),
+            )
+
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(0, run["apply_report"]["summary"]["formulation_cells_to_update"])
+            self.assertEqual(2, run["apply_report"]["summary"]["formulation_cells_merged_into_append"])
+            self.assertEqual([], run["apply_report"]["update_formulations"])
+            formulation = run["apply_report"]["append_formulations"][0]
+            self.assertEqual("0.25", formulation["volume_mL"])
+            self.assertEqual("0.606838", formulation["moles_mmol"])
+            self.assertFalse(
+                any(
+                    request.get("updateCells", {}).get("start", {}).get("sheetId") == 103
+                    for request in run["batch_update_requests"]
+                )
+            )
             self.assertEqual([], run["apply_report"]["update_experiments"])
 
     def test_material_audit_detects_emulsion_roles_and_gaps(self) -> None:
@@ -1912,6 +1954,47 @@ class ScaffoldTests(unittest.TestCase):
             checks = {row["name"]: row for row in run["experiment_reviews"][0]["preflight"]["checks"]}
             self.assertEqual("pass", checks["results_measurements"]["status"])
 
+    def test_daily_agent_projects_normalized_formulations_into_suggestions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            for row in tables["Master Reagents"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["molecular_weight_g_mol"] = "100"
+                    row["density_g_mL"] = "1.25"
+                    row["purity_fraction"] = "0.8"
+            for row in tables["Formulations"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["mass_g"] = "10"
+
+            run = build_daily_agent_run(
+                tables,
+                AgentRunConfig(review_date="2026-06-09"),
+            )
+
+            self.assertEqual(2, run["summary"]["formulation_cells_to_update"])
+            updates = {
+                update["field"]: update["value"]
+                for report_run in run["formulation_normalization_report"]["runs"]
+                if report_run["reagent_id"] == "M-SKA"
+                for update in report_run["update_formulations"]
+            }
+            self.assertEqual({"volume_mL": "8", "moles_mmol": "80"}, updates)
+            suggestion = run["agent_report"]["runs"][0]["append_agent_suggestions"][0]
+            formulation = next(
+                row
+                for row in suggestion["proposed_experiment_plan"]["sheet_rows"]["formulations"]
+                if row["reagent_id"] == "M-SKA"
+            )
+            self.assertEqual("8", formulation["volume_mL"])
+            self.assertEqual("80", formulation["moles_mmol"])
+            self.assertTrue(
+                any(
+                    update["field"] == "summary" and "2 normalized Formulations pending" in update["value"]
+                    for update in run["update_experiments"]
+                )
+            )
+
     def test_daily_review_row_includes_result_limit_action(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
@@ -1953,6 +2036,51 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
             self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])
 
+    def test_snapshot_daily_agent_run_batches_formulation_normalization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            for row in tables["Master Reagents"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["molecular_weight_g_mol"] = "100"
+                    row["density_g_mL"] = "1.25"
+                    row["purity_fraction"] = "0.8"
+            for row in tables["Formulations"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["mass_g"] = "10"
+            snapshot = snapshot_from_tables(
+                tables,
+                {
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Results": 102,
+                    "Agent Suggestions": 222,
+                    "Daily Reviews": 333,
+                },
+            )
+
+            run = build_snapshot_daily_agent_run(
+                snapshot,
+                AgentRunConfig(review_date="2026-06-09"),
+            )
+
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(2, run["apply_report"]["summary"]["formulation_cells_to_update"])
+            self.assertEqual(2, run["apply_audit"]["summary"]["formulation_cells_to_update"])
+            formulation_requests = [
+                request
+                for request in run["batch_update_requests"]
+                if request.get("updateCells", {}).get("start", {}).get("sheetId") == 103
+            ]
+            self.assertEqual([5, 6], [request["updateCells"]["start"]["columnIndex"] for request in formulation_requests])
+            self.assertEqual(
+                ["8", "80"],
+                [
+                    request["updateCells"]["rows"][0]["values"][0]["userEnteredValue"]["stringValue"]
+                    for request in formulation_requests
+                ],
+            )
+
     def test_daily_agent_apply_writes_daily_review_row_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
@@ -1971,6 +2099,28 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("LIT-EP-001-001", workbook["Experiments"]["G2"].value)
             self.assertEqual("needs_review", workbook["Experiments"]["I2"].value)
             self.assertIn("Daily review 2026-06-09", workbook["Experiments"]["K2"].value)
+
+    def test_daily_agent_apply_writes_formulation_normalization_to_workbook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            workbook["Master Reagents"]["F2"] = "100"
+            workbook["Master Reagents"]["G2"] = "1.25"
+            workbook["Master Reagents"]["H2"] = "0.8"
+            workbook["Formulations"]["E2"] = "10"
+            workbook.save(workbook_path)
+            output_path = Path(tmpdir) / "daily-applied.xlsx"
+
+            run_workbook_daily_agent(
+                workbook_path,
+                AgentRunConfig(review_date="2026-06-09"),
+                apply=True,
+                output_workbook=output_path,
+            )
+
+            workbook = load_workbook(output_path)
+            self.assertEqual("8", workbook["Formulations"]["F2"].value)
+            self.assertEqual("80", workbook["Formulations"]["G2"].value)
 
     def test_daily_agent_apply_marks_completed_followup_suggestion_run_complete(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

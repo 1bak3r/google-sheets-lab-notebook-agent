@@ -232,8 +232,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
 Use `record-daily-agent-run` when you want one report that first projects the
 structured record into the notebook, then runs the daily agent from that
 projected state. The combined snapshot batch appends the record rows, pending
-normalized Results, Literature Evidence, Agent Suggestions, and the Daily
-Reviews row in one auditable payload:
+normalized Results, normalized Formulations values, Literature Evidence, Agent
+Suggestions, and the Daily Reviews row in one auditable payload. If formulation
+values are derived for newly appended Formulations rows, they are folded into
+those appended rows instead of emitted as updates against rows that do not exist
+yet:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
@@ -326,13 +329,16 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \
 ```
 
 Run the combined daily notebook agent when you want pending normalized Results
-rows, the summary, per-experiment preflight checks, role-aware material search,
-literature evidence rows, suggestion rows, a compact `Daily Reviews` row, and
-`Experiments` status/next-step/summary updates from one command:
+rows, pending normalized Formulations cells, the summary, per-experiment
+preflight checks, role-aware material search, literature evidence rows,
+suggestion rows, a compact `Daily Reviews` row, and `Experiments`
+status/next-step/summary updates from one command:
 
-Pending Results rows from Daily Log normalization are projected into the
-in-memory review before suggestions are generated, so same-day measurements can
-drive `result_analysis` without waiting for a separate apply step.
+Pending Results rows from Daily Log normalization and pending Formulations
+quantity cells from formulation normalization are projected into the in-memory
+review before suggestions are generated, so same-day measurements and derived
+formulation quantities can drive `result_analysis`, preflight, and follow-up
+plan rows without waiting for a separate apply step.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
@@ -348,8 +354,9 @@ For a Google Sheets snapshot with target sheet IDs, the same command includes a
 pre-apply audit and emits `batchUpdate` requests only when that audit is valid.
 The daily snapshot must include the `Experiments` and `Daily Reviews` sheet IDs.
 When Daily Log measurements normalize into Results, it must also include the
-`Results` sheet ID in addition to `Literature Evidence` and
-`Agent Suggestions`:
+`Results` sheet ID. When formulation quantities normalize into Formulations, it
+must include the `Formulations` sheet ID. Literature-backed suggestions also
+need `Literature Evidence` and `Agent Suggestions`:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
@@ -368,9 +375,10 @@ experiment suggestion and the notebook/material gaps that would make that
 suggestion hard to execute. The daily summary also carries result-analysis
 signals and limiting metrics so the compact Daily Reviews next-actions list can
 call out outcome limits before a user accepts a follow-up. It also includes
-`daily_log_results_report`, and the snapshot batch appends those normalized
-Results rows before literature evidence and agent suggestions, then appends the
-compact Daily Reviews status row and updates the selected Experiments row.
+`daily_log_results_report` and `formulation_normalization_report`; the snapshot
+batch writes formulation updates before appending normalized Results rows,
+literature evidence, and agent suggestions, then appends the compact Daily
+Reviews status row and updates the selected Experiments row.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \

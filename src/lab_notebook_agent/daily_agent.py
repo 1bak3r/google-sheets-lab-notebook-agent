@@ -14,6 +14,10 @@ from .agent import (
 from .daily_log_results import apply_daily_log_results_report_to_workbook, build_daily_log_results_report
 from .daily_reviews import apply_daily_review_rows_to_workbook, daily_review_row_from_run
 from .daily_summary import build_daily_summary_report
+from .formulation_normalization import (
+    apply_formulation_normalization_report_to_workbook,
+    build_formulation_normalization_report,
+)
 from .google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
@@ -36,12 +40,21 @@ def build_daily_agent_run(
         review_date=review_date,
         experiment_ids=config.experiment_ids,
     )
+    selected_ids = tuple(daily_summary.get("selection", {}).get("selected_experiment_ids", []))
     daily_log_results_report = build_daily_log_results_report(
         tables,
-        experiment_ids=tuple(daily_summary.get("selection", {}).get("selected_experiment_ids", [])),
+        experiment_ids=selected_ids,
         review_date=review_date,
     )
     projected_tables = project_daily_log_results_into_tables(tables, daily_log_results_report)
+    formulation_normalization_report = build_formulation_normalization_report(
+        projected_tables,
+        experiment_ids=selected_ids,
+    )
+    projected_tables = project_formulation_normalization_into_tables(
+        projected_tables,
+        formulation_normalization_report,
+    )
     agent_report = build_agent_report(projected_tables, config=config)
     experiment_reviews = build_daily_experiment_reviews(
         projected_tables,
@@ -54,6 +67,7 @@ def build_daily_agent_run(
         config,
         experiment_reviews,
         daily_log_results_report=daily_log_results_report,
+        formulation_normalization_report=formulation_normalization_report,
     )
     run["update_experiments"] = build_daily_experiment_updates(tables, run)
     run["update_agent_suggestions"] = build_daily_suggestion_updates(tables)
@@ -77,6 +91,36 @@ def project_daily_log_results_into_tables(
         return tables
     projected = {sheet_name: list(rows) for sheet_name, rows in tables.items()}
     projected["Results"] = [*projected.get("Results", []), *result_rows]
+    return projected
+
+
+def project_formulation_normalization_into_tables(
+    tables: dict[str, list[dict[str, Any]]],
+    formulation_normalization_report: dict[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    updates = [
+        update
+        for run in formulation_normalization_report.get("runs", []) or []
+        if isinstance(run, dict)
+        for update in run.get("update_formulations", []) or []
+        if isinstance(update, dict)
+    ]
+    if not updates:
+        return tables
+    projected = {
+        sheet_name: [dict(row) if isinstance(row, dict) else row for row in rows]
+        for sheet_name, rows in tables.items()
+    }
+    formulations = projected.setdefault("Formulations", [])
+    for update in updates:
+        row_number = int(update.get("row_number", 0) or 0)
+        row_index = row_number - 2
+        field = str(update.get("field", "")).strip()
+        if not field or row_index < 0 or row_index >= len(formulations):
+            continue
+        row = formulations[row_index]
+        if isinstance(row, dict):
+            row[field] = update.get("value", "")
     return projected
 
 
@@ -124,6 +168,14 @@ def run_workbook_daily_agent(
                 output_workbook=destination,
             )
             current = destination
+        formulation_normalization = run.get("formulation_normalization_report", {})
+        if formulation_normalization.get("summary", {}).get("formulation_cells_to_update", 0):
+            apply_formulation_normalization_report_to_workbook(
+                current,
+                formulation_normalization,
+                output_workbook=destination,
+            )
+            current = destination
         apply_agent_report_to_workbook(
             current,
             run["agent_report"],
@@ -163,9 +215,11 @@ def assemble_daily_agent_run(
     config: AgentRunConfig,
     experiment_reviews: list[dict[str, Any]] | None = None,
     daily_log_results_report: dict[str, Any] | None = None,
+    formulation_normalization_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experiment_reviews = experiment_reviews or []
     daily_log_results_report = daily_log_results_report or empty_daily_log_results_report(config)
+    formulation_normalization_report = formulation_normalization_report or empty_formulation_normalization_report(config)
     return {
         "schema": "lab-notebook-agent-daily-run.v1",
         "review_date": require_review_date(config),
@@ -174,9 +228,16 @@ def assemble_daily_agent_run(
             "selected_experiment_ids": agent_report.get("selection", {}).get("selected_experiment_ids", []),
             "daily_summary_selected_experiment_ids": daily_summary.get("selection", {}).get("selected_experiment_ids", []),
         },
-        "summary": combined_summary(daily_summary, agent_report, experiment_reviews, daily_log_results_report),
+        "summary": combined_summary(
+            daily_summary,
+            agent_report,
+            experiment_reviews,
+            daily_log_results_report,
+            formulation_normalization_report,
+        ),
         "experiment_reviews": experiment_reviews,
         "daily_log_results_report": daily_log_results_report,
+        "formulation_normalization_report": formulation_normalization_report,
         "daily_summary": daily_summary,
         "agent_report": agent_report,
     }
@@ -187,11 +248,18 @@ def combined_summary(
     agent_report: dict[str, Any],
     experiment_reviews: list[dict[str, Any]] | None = None,
     daily_log_results_report: dict[str, Any] | None = None,
+    formulation_normalization_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experiment_reviews = experiment_reviews or []
     daily_log_results_summary = (
         daily_log_results_report.get("summary", {})
         if isinstance(daily_log_results_report, dict) and isinstance(daily_log_results_report.get("summary"), dict)
+        else {}
+    )
+    formulation_summary = (
+        formulation_normalization_report.get("summary", {})
+        if isinstance(formulation_normalization_report, dict)
+        and isinstance(formulation_normalization_report.get("summary"), dict)
         else {}
     )
     daily_counts = daily_summary.get("summary", {}) if isinstance(daily_summary.get("summary"), dict) else {}
@@ -212,6 +280,7 @@ def combined_summary(
         "suggestion_rows_to_append": int(agent_counts.get("suggestion_rows_to_append", 0) or 0),
         "normalized_result_rows_to_append": int(daily_log_results_summary.get("result_rows_to_append", 0) or 0),
         "daily_log_measurements_skipped": int(daily_log_results_summary.get("measurements_skipped", 0) or 0),
+        "formulation_cells_to_update": int(formulation_summary.get("formulation_cells_to_update", 0) or 0),
         "experiment_review_count": len(experiment_reviews),
         "preflight_fail_count": sum(int(row.get("preflight", {}).get("summary", {}).get("fail_count", 0) or 0) for row in experiment_reviews),
         "preflight_warn_count": sum(int(row.get("preflight", {}).get("summary", {}).get("warn_count", 0) or 0) for row in experiment_reviews),
@@ -262,6 +331,7 @@ def empty_daily_agent_run(config: AgentRunConfig, review_date: str) -> dict[str,
         config,
         experiment_reviews=[],
         daily_log_results_report=empty_daily_log_results_report(config),
+        formulation_normalization_report=empty_formulation_normalization_report(config),
     )
 
 
@@ -283,10 +353,29 @@ def empty_daily_log_results_report(config: AgentRunConfig) -> dict[str, Any]:
     }
 
 
+def empty_formulation_normalization_report(config: AgentRunConfig) -> dict[str, Any]:
+    return {
+        "schema": "lab-notebook-agent-formulation-normalization.v1",
+        "selection": {
+            "requested_experiment_ids": list(config.experiment_ids),
+        },
+        "summary": {
+            "formulation_rows_considered": 0,
+            "ready": 0,
+            "skipped": 0,
+            "formulation_cells_to_update": 0,
+            "fields_skipped": 0,
+        },
+        "runs": [],
+    }
+
+
 def build_daily_apply_report(run: dict[str, Any]) -> dict[str, Any]:
     daily_log_results_report = run.get("daily_log_results_report", {})
+    formulation_normalization_report = run.get("formulation_normalization_report", {})
     agent_report = run.get("agent_report", {})
     daily_log_runs = daily_log_results_report.get("runs", []) if isinstance(daily_log_results_report, dict) else []
+    formulation_updates = formulation_updates_from_report(formulation_normalization_report)
     agent_runs = agent_report.get("runs", []) if isinstance(agent_report, dict) else []
     runs = [
         run_row
@@ -297,16 +386,33 @@ def build_daily_apply_report(run: dict[str, Any]) -> dict[str, Any]:
         "schema": "lab-notebook-agent-daily-apply.v1",
         "summary": {
             "result_rows_to_append": sum(len(row.get("append_results", [])) for row in runs),
+            "formulation_cells_to_update": len(formulation_updates),
             "evidence_rows_to_append": sum(len(row.get("append_literature_evidence", [])) for row in runs),
             "suggestion_rows_to_append": sum(len(row.get("append_agent_suggestions", [])) for row in runs),
             "suggestion_rows_to_update": len(run.get("update_agent_suggestions", []) or []),
             "daily_review_rows_to_append": 1,
         },
         "append_daily_reviews": [daily_review_row_from_run(run)],
+        "update_formulations": formulation_updates,
         "update_experiments": run.get("update_experiments", []),
         "update_agent_suggestions": run.get("update_agent_suggestions", []),
         "runs": runs,
     }
+
+
+def formulation_updates_from_report(report: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(report, dict):
+        return []
+    updates: list[dict[str, Any]] = []
+    for run in report.get("runs", []) or []:
+        if not isinstance(run, dict):
+            continue
+        updates.extend(
+            update
+            for update in run.get("update_formulations", []) or []
+            if isinstance(update, dict)
+        )
+    return updates
 
 
 def build_daily_experiment_updates(
@@ -430,6 +536,8 @@ def daily_experiment_next_step(experiment_id: str, review: dict[str, Any], run: 
         return "Review draft Agent Suggestions and set status to accepted or rejected before materialization."
     if daily_experiment_count(experiment_id, run, "append_results"):
         return "Review normalized Daily Log measurements in Results."
+    if daily_experiment_count(experiment_id, run, "update_formulations"):
+        return "Review normalized Formulations quantities before relying on follow-up calculations."
     if daily_experiment_count(experiment_id, run, "append_literature_evidence"):
         return "Review appended Literature Evidence before relying on it."
     if next_actions:
@@ -449,6 +557,7 @@ def daily_experiment_summary_text(
         f"{experiment_summary.get('observation_count', 0)} observations; "
         f"{experiment_summary.get('result_count', 0)} existing Results rows; "
         f"{daily_experiment_count(experiment_id, run, 'append_results')} normalized Results pending; "
+        f"{daily_experiment_count(experiment_id, run, 'update_formulations')} normalized Formulations pending; "
         f"{daily_experiment_count(experiment_id, run, 'append_literature_evidence')} evidence rows pending; "
         f"{daily_experiment_count(experiment_id, run, 'append_agent_suggestions')} suggestion rows pending; "
         f"{preflight_summary.get('fail_count', 0)} preflight failures."
@@ -479,7 +588,7 @@ def daily_experiment_linked_literature_ids(
 def daily_experiment_write_count(experiment_id: str, run: dict[str, Any]) -> int:
     return sum(
         daily_experiment_count(experiment_id, run, key)
-        for key in ("append_results", "append_literature_evidence", "append_agent_suggestions")
+        for key in ("append_results", "update_formulations", "append_literature_evidence", "append_agent_suggestions")
     )
 
 
@@ -487,6 +596,7 @@ def daily_experiment_count(experiment_id: str, run: dict[str, Any], key: str) ->
     total = 0
     reports = [
         run.get("daily_log_results_report", {}),
+        run.get("formulation_normalization_report", {}),
         run.get("agent_report", {}),
     ]
     for report in reports:

@@ -298,7 +298,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
 The command runs the daily agent against a projected notebook that includes the
 new record, then emits one batch for the original sheet. Updates for the newly
 appended experiment are folded into that appended `Experiments` row so the batch
-does not depend on updating a row that does not exist yet.
+does not depend on updating a row that does not exist yet. Derived formulation
+values for newly appended Formulations rows are folded into those appended rows
+for the same reason.
 
 Normalize blank formulation quantity cells when the sheet already has enough
 inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or
@@ -382,15 +384,17 @@ apply/batch path emits that `run_complete` status update automatically when the
 suggestion is `run_planned` and its proposed follow-up experiment is `complete`.
 
 To run the daily summary and suggestion agent together, use the combined daily
-agent command. It writes pending normalized Results rows, the same read-only
-summary, per-experiment preflight checks, role-aware material search, the
-appendable agent report, a compact Daily Reviews status row, Experiments
-status/next-step/summary updates, the pre-apply audit, and the Google Sheets
-`batchUpdate` payload from one snapshot:
+agent command. It writes pending normalized Results rows, pending normalized
+Formulations cells, the same read-only summary, per-experiment preflight checks,
+role-aware material search, the appendable agent report, a compact Daily Reviews
+status row, Experiments status/next-step/summary updates, the pre-apply audit,
+and the Google Sheets `batchUpdate` payload from one snapshot:
 
-Pending Results rows from Daily Log normalization are projected into the
-in-memory preflight and recommendation pass before the batch is assembled, so
-same-day measurements can drive `result_analysis` immediately.
+Pending Results rows from Daily Log normalization and pending Formulations
+quantity cells from formulation normalization are projected into the in-memory
+preflight and recommendation pass before the batch is assembled, so same-day
+measurements and derived formulation quantities can drive the follow-up plan
+immediately.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
@@ -412,17 +416,20 @@ memory block for a run.
 Proceed with the batch output only if `artifacts/live-sheet-apply-audit.json`
 has `"valid": true`. The snapshot must include the `Experiments` and
 `Daily Reviews` sheet IDs. If Daily Log measurements normalize into Results, it
-must also include the `Results` sheet ID; the batch will append Results rows
-before Literature Evidence and Agent Suggestions, append the Daily Reviews row,
-then update the selected Experiments row.
+must also include the `Results` sheet ID. If formulation quantities normalize
+into Formulations, it must include the `Formulations` sheet ID. The batch writes
+Formulations updates before appending Results rows, Literature Evidence, Agent
+Suggestions, and the Daily Reviews row, then updates the selected Experiments
+row.
 
 The combined run's `experiment_reviews` block can replace separate
 `experiment-preflight` and `search-materials` calls when you want one daily
 review artifact for the sheet. The Daily Reviews next-actions JSON also carries
 the first result-limit guidance for experiments with out-of-target measurements.
 Its `daily_log_results_report` block can also replace the standalone
-`normalize-daily-log-results` command when you want one audited batch for the
-day.
+`normalize-daily-log-results` command, and its
+`formulation_normalization_report` block can replace a separate
+`normalize-formulations` pass when you want one audited batch for the day.
 
 ## 6. Scaffold Starter Materials
 
