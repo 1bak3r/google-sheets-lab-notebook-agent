@@ -47,6 +47,7 @@ from lab_notebook_agent.google_api import (
     run_live_google_daily_agent,
     run_live_google_daily_log_results_normalization,
     run_live_google_agent,
+    run_live_google_experiment_record,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
     run_live_google_setup,
@@ -1270,6 +1271,35 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, len(client.batch_updates))
             self.assertFalse(any("addSheet" in request for request in run["batch_update_requests"]))
             self.assertTrue(any("setDataValidation" in request for request in run["batch_update_requests"]))
+
+    def test_live_google_experiment_record_applies_valid_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx")),
+                    {
+                        "Experiments": 101,
+                        "Formulations": 103,
+                        "Daily Log": 104,
+                        "Results": 102,
+                    },
+                )
+            )
+            run = run_live_google_experiment_record(
+                "spreadsheet-123",
+                client,
+                sample_experiment_record(),
+                apply=True,
+            )
+            self.assertTrue(run["applied"])
+            self.assertEqual("lab-notebook-agent-live-google-experiment-record.v1", run["schema"])
+            self.assertEqual("lab-notebook-agent-experiment-record.v1", run["record_report"]["schema"])
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(
+                [101, 103, 104, 102],
+                [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
+            )
+            self.assertEqual(1, len(client.batch_updates))
 
     def test_live_google_agent_run_applies_valid_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -83,6 +83,14 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-setup-live \
   --audit-output artifacts/live-google-setup-audit.json \
   --batch-output artifacts/live-google-setup-batch.json
 
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-experiment-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --record examples/emulsion_polymerization_record.json \
+  --snapshot-output artifacts/live-google-record-snapshot.json \
+  --report-output artifacts/live-google-record-ep-010.json \
+  --audit-output artifacts/live-google-record-ep-010-audit.json \
+  --batch-output artifacts/live-google-record-ep-010-batch.json
+
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --review-date 2026-06-09 \

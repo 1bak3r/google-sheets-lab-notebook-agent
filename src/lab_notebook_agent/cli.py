@@ -36,6 +36,7 @@ from .google_api import (
     run_live_google_daily_agent,
     run_live_google_daily_log_results_normalization,
     run_live_google_agent,
+    run_live_google_experiment_record,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
     run_live_google_setup,
@@ -322,6 +323,21 @@ def main(argv: list[str] | None = None) -> int:
     google_agent_parser.add_argument("--report-output", help="Optional agent report JSON path.")
     google_agent_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
     google_agent_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
+
+    google_record_parser = subparsers.add_parser(
+        "google-record-experiment-live",
+        help="Capture a live Google Sheet, audit a structured experiment record, and optionally apply generated rows.",
+    )
+    google_record_parser.add_argument("--spreadsheet-id", required=True)
+    google_record_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_record_parser.add_argument("--range", default="A1:Z1000")
+    google_record_parser.add_argument("--record", required=True, help="Experiment record JSON file.")
+    google_record_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_record_parser.add_argument("--run-output", help="Optional full live record run JSON path. Defaults to stdout.")
+    google_record_parser.add_argument("--snapshot-output", help="Optional captured snapshot JSON path.")
+    google_record_parser.add_argument("--report-output", help="Optional record report JSON path.")
+    google_record_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
+    google_record_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
 
     google_daily_agent_parser = subparsers.add_parser(
         "google-daily-agent-run-live",
@@ -896,6 +912,25 @@ def main(argv: list[str] | None = None) -> int:
             audit_output=args.audit_output,
             batch_output=args.batch_output,
             report_key="agent_report",
+        )
+        return 0
+    if args.command == "google-record-experiment-live":
+        client = build_google_client(args.service_account_file)
+        run = run_live_google_experiment_record(
+            args.spreadsheet_id,
+            client,
+            load_experiment_record(args.record),
+            value_range=args.range,
+            apply=args.apply,
+        )
+        write_live_run_outputs(
+            run,
+            run_output=args.run_output,
+            snapshot_output=args.snapshot_output,
+            report_output=args.report_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+            report_key="record_report",
         )
         return 0
     if args.command == "google-daily-agent-run-live":
