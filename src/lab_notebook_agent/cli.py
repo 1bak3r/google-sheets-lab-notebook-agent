@@ -39,6 +39,7 @@ from .google_api import (
     run_live_google_experiment_record,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
+    run_live_google_recorded_daily_agent,
     run_live_google_setup,
 )
 from .litscout import evidence_rows_to_values, litscout_works_to_evidence_rows, load_litscout_export
@@ -49,6 +50,7 @@ from .notebook_search import search_notebook_tables
 from .planning import apply_plan_materialization_report_to_workbook, build_plan_materialization_report
 from .preflight import build_experiment_preflight_report
 from .recommend import build_recommendation, load_entry
+from .recorded_daily_agent import build_recorded_daily_agent_run, build_snapshot_recorded_daily_agent_run
 from .schema import workbook_contract
 from .search import LocalSemanticIndex, load_knowledge
 from .sheets import append_suggestion_to_workbook, save_entry_from_workbook, suggest_from_workbook
@@ -117,6 +119,32 @@ def main(argv: list[str] | None = None) -> int:
     record_parser.add_argument("--report-output", help="Optional record report JSON path. Defaults to stdout.")
     record_parser.add_argument("--audit-output", help="Optional snapshot audit JSON path.")
     record_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path for snapshot mode.")
+
+    record_daily_parser = subparsers.add_parser(
+        "record-daily-agent-run",
+        help="Project a structured experiment record into the notebook and run the daily agent against that projected state.",
+    )
+    record_daily_source = record_daily_parser.add_mutually_exclusive_group(required=True)
+    record_daily_source.add_argument("--workbook", help="Lab notebook .xlsx file.")
+    record_daily_source.add_argument("--snapshot", help="Google Sheets snapshot JSON file.")
+    record_daily_parser.add_argument("--record", required=True, help="Experiment record JSON file.")
+    record_daily_parser.add_argument("--review-date", help="Review date as YYYY-MM-DD. Defaults to the record experiment date.")
+    record_daily_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable. Defaults to the record experiment.")
+    record_daily_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    record_daily_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
+    record_daily_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
+    record_daily_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
+    record_daily_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
+    record_daily_parser.add_argument("--litscout-depth", default="light")
+    record_daily_parser.add_argument("--litscout-limit", type=int, default=8)
+    record_daily_parser.add_argument("--evidence-limit", type=int, default=3)
+    record_daily_parser.add_argument("--artifacts-dir", default="artifacts")
+    record_daily_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
+    record_daily_parser.add_argument("--run-output", help="Optional full recorded daily run JSON path. Defaults to stdout.")
+    record_daily_parser.add_argument("--record-output", help="Optional experiment record report JSON path.")
+    record_daily_parser.add_argument("--daily-run-output", help="Optional projected daily agent run JSON path.")
+    record_daily_parser.add_argument("--audit-output", help="Optional snapshot apply audit JSON path. Snapshot source only.")
+    record_daily_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path. Snapshot source only.")
 
     normalize_log_parser = subparsers.add_parser(
         "normalize-daily-log-results",
@@ -339,6 +367,34 @@ def main(argv: list[str] | None = None) -> int:
     google_record_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
     google_record_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
 
+    google_record_daily_parser = subparsers.add_parser(
+        "google-record-daily-agent-run-live",
+        help="Capture a live Google Sheet, project a structured record, run the daily agent, audit, and optionally apply.",
+    )
+    google_record_daily_parser.add_argument("--spreadsheet-id", required=True)
+    google_record_daily_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_record_daily_parser.add_argument("--range", default="A1:Z1000")
+    google_record_daily_parser.add_argument("--record", required=True, help="Experiment record JSON file.")
+    google_record_daily_parser.add_argument("--review-date", help="Review date as YYYY-MM-DD. Defaults to the record experiment date.")
+    google_record_daily_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable. Defaults to the record experiment.")
+    google_record_daily_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    google_record_daily_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
+    google_record_daily_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
+    google_record_daily_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
+    google_record_daily_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
+    google_record_daily_parser.add_argument("--litscout-depth", default="light")
+    google_record_daily_parser.add_argument("--litscout-limit", type=int, default=8)
+    google_record_daily_parser.add_argument("--evidence-limit", type=int, default=3)
+    google_record_daily_parser.add_argument("--artifacts-dir", default="artifacts")
+    google_record_daily_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
+    google_record_daily_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_record_daily_parser.add_argument("--run-output", help="Optional full live recorded daily run JSON path. Defaults to stdout.")
+    google_record_daily_parser.add_argument("--snapshot-output", help="Optional captured snapshot JSON path.")
+    google_record_daily_parser.add_argument("--record-output", help="Optional experiment record report JSON path.")
+    google_record_daily_parser.add_argument("--daily-run-output", help="Optional projected daily agent run JSON path.")
+    google_record_daily_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
+    google_record_daily_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
+
     google_daily_agent_parser = subparsers.add_parser(
         "google-daily-agent-run-live",
         help="Capture, run a daily notebook review, audit, and optionally apply against a live Google Sheet.",
@@ -551,6 +607,37 @@ def main(argv: list[str] | None = None) -> int:
         if args.batch_output and snapshot is not None and audit is not None:
             requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot)) if audit["valid"] else []
             write_or_print_json(requests, args.batch_output)
+        return 0
+    if args.command == "record-daily-agent-run":
+        config = AgentRunConfig(
+            experiment_ids=tuple(args.experiment_id),
+            review_date=args.review_date,
+            context_limit=args.context_limit,
+            history_limit=args.history_limit,
+            evidence_limit=args.evidence_limit,
+            force=args.force,
+            litscout_export=args.litscout_export,
+            run_litscout=args.run_litscout,
+            litscout_sources=args.litscout_sources,
+            litscout_depth=args.litscout_depth,
+            litscout_limit=args.litscout_limit,
+            artifacts_dir=args.artifacts_dir,
+        )
+        record = load_experiment_record(args.record)
+        if args.workbook:
+            if args.audit_output or args.batch_output:
+                raise SystemExit("--audit-output and --batch-output require --snapshot so sheet IDs are available.")
+            run = build_recorded_daily_agent_run(load_workbook_tables(args.workbook), record, config)
+        else:
+            run = build_snapshot_recorded_daily_agent_run(load_sheet_snapshot(args.snapshot), record, config)
+        write_recorded_daily_outputs(
+            run,
+            run_output=args.run_output,
+            record_output=args.record_output,
+            daily_run_output=args.daily_run_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+        )
         return 0
     if args.command == "normalize-daily-log-results":
         if args.workbook:
@@ -933,6 +1020,40 @@ def main(argv: list[str] | None = None) -> int:
             report_key="record_report",
         )
         return 0
+    if args.command == "google-record-daily-agent-run-live":
+        client = build_google_client(args.service_account_file)
+        config = AgentRunConfig(
+            experiment_ids=tuple(args.experiment_id),
+            review_date=args.review_date,
+            context_limit=args.context_limit,
+            history_limit=args.history_limit,
+            evidence_limit=args.evidence_limit,
+            force=args.force,
+            litscout_export=args.litscout_export,
+            run_litscout=args.run_litscout,
+            litscout_sources=args.litscout_sources,
+            litscout_depth=args.litscout_depth,
+            litscout_limit=args.litscout_limit,
+            artifacts_dir=args.artifacts_dir,
+        )
+        run = run_live_google_recorded_daily_agent(
+            args.spreadsheet_id,
+            client,
+            load_experiment_record(args.record),
+            config=config,
+            value_range=args.range,
+            apply=args.apply,
+        )
+        write_live_recorded_daily_outputs(
+            run,
+            run_output=args.run_output,
+            snapshot_output=args.snapshot_output,
+            record_output=args.record_output,
+            daily_run_output=args.daily_run_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+        )
+        return 0
     if args.command == "google-daily-agent-run-live":
         client = build_google_client(args.service_account_file)
         config = AgentRunConfig(
@@ -1109,6 +1230,53 @@ def write_live_daily_agent_outputs(
     if run_output:
         write_or_print_json(run, run_output)
     elif not any([snapshot_output, daily_run_output, summary_output, report_output, audit_output, batch_output]):
+        print_json(run)
+
+
+def write_recorded_daily_outputs(
+    run: dict[str, Any],
+    run_output: str | None,
+    record_output: str | None,
+    daily_run_output: str | None,
+    audit_output: str | None,
+    batch_output: str | None,
+) -> None:
+    if record_output:
+        write_or_print_json(run.get("record_report", {}), record_output)
+    if daily_run_output:
+        write_or_print_json(run.get("daily_agent_run", {}), daily_run_output)
+    if audit_output:
+        write_or_print_json(run.get("apply_audit", {}), audit_output)
+    if batch_output:
+        write_or_print_json(run.get("batch_update_requests", []), batch_output)
+    if run_output:
+        write_or_print_json(run, run_output)
+    elif not any([record_output, daily_run_output, audit_output, batch_output]):
+        print_json(run)
+
+
+def write_live_recorded_daily_outputs(
+    run: dict[str, Any],
+    run_output: str | None,
+    snapshot_output: str | None,
+    record_output: str | None,
+    daily_run_output: str | None,
+    audit_output: str | None,
+    batch_output: str | None,
+) -> None:
+    if snapshot_output:
+        write_or_print_json(run.get("snapshot", {}), snapshot_output)
+    if record_output:
+        write_or_print_json(run.get("record_report", {}), record_output)
+    if daily_run_output:
+        write_or_print_json(run.get("daily_agent_run", {}), daily_run_output)
+    if audit_output:
+        write_or_print_json(run.get("apply_audit", {}), audit_output)
+    if batch_output:
+        write_or_print_json(run.get("batch_update_requests", []), batch_output)
+    if run_output:
+        write_or_print_json(run, run_output)
+    elif not any([snapshot_output, record_output, daily_run_output, audit_output, batch_output]):
         print_json(run)
 
 

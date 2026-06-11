@@ -19,6 +19,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli suggest --entry examples/emulsi
 PYTHONPATH=src python3 -m lab_notebook_agent.cli audit-workbook --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --output artifacts/ep-001-material-audit.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli experiment-preflight --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --stage review --output artifacts/ep-001-preflight-review.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment --record examples/emulsion_polymerization_record.json --report-output artifacts/record-ep-010.json
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run --workbook artifacts/lab_notebook_template.xlsx --record examples/emulsion_polymerization_record.json --run-output artifacts/record-daily-agent-ep-010.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/formulation-normalization-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/daily-log-results-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary --workbook artifacts/lab_notebook_template.xlsx --review-date 2026-06-09 --output artifacts/daily-summary-2026-06-09.json
@@ -177,6 +178,24 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
   --report-output artifacts/live-sheet-record-ep-010.json \
   --audit-output artifacts/live-sheet-record-ep-010-audit.json \
   --batch-output artifacts/live-sheet-record-ep-010-batch.json
+```
+
+Use `record-daily-agent-run` when you want one report that first projects the
+structured record into the notebook, then runs the daily agent from that
+projected state. The combined snapshot batch appends the record rows, pending
+normalized Results, Literature Evidence, Agent Suggestions, and the Daily
+Reviews row in one auditable payload:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --record examples/emulsion_polymerization_record.json \
+  --litscout-export artifacts/litscout-ep-010.json \
+  --run-output artifacts/live-sheet-record-daily-ep-010.json \
+  --record-output artifacts/live-sheet-record-ep-010.json \
+  --daily-run-output artifacts/live-sheet-record-daily-agent-ep-010.json \
+  --audit-output artifacts/live-sheet-record-daily-ep-010-audit.json \
+  --batch-output artifacts/live-sheet-record-daily-ep-010-batch.json
 ```
 
 Use `normalize-formulations` after entering at least one quantitative basis in
@@ -428,6 +447,16 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-experiment-live \
   --report-output artifacts/live-google-record-ep-010.json \
   --audit-output artifacts/live-google-record-ep-010-audit.json \
   --batch-output artifacts/live-google-record-ep-010-batch.json
+
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-daily-agent-run-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --record examples/emulsion_polymerization_record.json \
+  --litscout-export artifacts/litscout-ep-010.json \
+  --snapshot-output artifacts/live-google-record-daily-snapshot.json \
+  --record-output artifacts/live-google-record-ep-010.json \
+  --daily-run-output artifacts/live-google-record-daily-agent-ep-010.json \
+  --audit-output artifacts/live-google-record-daily-ep-010-audit.json \
+  --batch-output artifacts/live-google-record-daily-ep-010-batch.json
 
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \

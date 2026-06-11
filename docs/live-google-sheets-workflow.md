@@ -91,6 +91,16 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-experiment-live \
   --audit-output artifacts/live-google-record-ep-010-audit.json \
   --batch-output artifacts/live-google-record-ep-010-batch.json
 
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-daily-agent-run-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --record examples/emulsion_polymerization_record.json \
+  --litscout-export artifacts/litscout-ep-010.json \
+  --snapshot-output artifacts/live-google-record-daily-snapshot.json \
+  --record-output artifacts/live-google-record-ep-010.json \
+  --daily-run-output artifacts/live-google-record-daily-agent-ep-010.json \
+  --audit-output artifacts/live-google-record-daily-ep-010-audit.json \
+  --batch-output artifacts/live-google-record-daily-ep-010-batch.json
+
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --review-date 2026-06-09 \
@@ -253,6 +263,27 @@ The batch appends `Experiments`, `Formulations`, `Daily Log`, and `Results`
 rows. Proceed only if the audit is valid; otherwise fix duplicate experiment
 IDs, duplicate Daily Log timestamps/observations, or missing sheet IDs before
 applying.
+
+Use the combined record-plus-daily command when a newly captured record should
+immediately drive normalized Results, LitScout-backed evidence, an Agent
+Suggestions row, a Daily Reviews row, and experiment status/summary updates:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --record examples/emulsion_polymerization_record.json \
+  --litscout-export artifacts/litscout-ep-010.json \
+  --run-output artifacts/live-sheet-record-daily-ep-010.json \
+  --record-output artifacts/live-sheet-record-ep-010.json \
+  --daily-run-output artifacts/live-sheet-record-daily-agent-ep-010.json \
+  --audit-output artifacts/live-sheet-record-daily-ep-010-audit.json \
+  --batch-output artifacts/live-sheet-record-daily-ep-010-batch.json
+```
+
+The command runs the daily agent against a projected notebook that includes the
+new record, then emits one batch for the original sheet. Updates for the newly
+appended experiment are folded into that appended `Experiments` row so the batch
+does not depend on updating a row that does not exist yet.
 
 Normalize blank formulation quantity cells when the sheet already has enough
 inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or

@@ -21,6 +21,7 @@ from .google_sheets import (
     validate_snapshot,
 )
 from .planning import build_plan_materialization_report
+from .recorded_daily_agent import build_snapshot_recorded_daily_agent_run
 from .schema import SHEETS
 
 
@@ -269,6 +270,34 @@ def run_live_google_experiment_record(
         "snapshot_audit": snapshot_audit,
         "record_report": report,
         "apply_audit": apply_audit,
+        "batch_update_requests": requests,
+        "batch_update_response": response,
+    }
+
+
+def run_live_google_recorded_daily_agent(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    record: dict[str, Any],
+    config: AgentRunConfig,
+    value_range: str = "A1:Z1000",
+    apply: bool = False,
+) -> dict[str, Any]:
+    snapshot = capture_snapshot_from_google_sheets(spreadsheet_id, client, value_range=value_range)
+    recorded_daily_run = build_snapshot_recorded_daily_agent_run(snapshot, record, config)
+    requests = recorded_daily_run.get("batch_update_requests", [])
+    response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}
+    return {
+        "schema": "lab-notebook-agent-live-google-recorded-daily-run.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "applied": bool(apply and requests),
+        "snapshot": snapshot,
+        "snapshot_audit": recorded_daily_run.get("snapshot_audit", {}),
+        "recorded_daily_run": recorded_daily_run,
+        "record_report": recorded_daily_run.get("record_report", {}),
+        "daily_agent_run": recorded_daily_run.get("daily_agent_run", {}),
+        "apply_report": recorded_daily_run.get("apply_report", {}),
+        "apply_audit": recorded_daily_run.get("apply_audit", {}),
         "batch_update_requests": requests,
         "batch_update_response": response,
     }

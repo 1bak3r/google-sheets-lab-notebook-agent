@@ -50,6 +50,7 @@ from lab_notebook_agent.google_api import (
     run_live_google_experiment_record,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
+    run_live_google_recorded_daily_agent,
     run_live_google_setup,
 )
 from lab_notebook_agent.cli import main, parse_sheet_id_args
@@ -67,6 +68,10 @@ from lab_notebook_agent.planning import (
 )
 from lab_notebook_agent.preflight import build_experiment_preflight_report
 from lab_notebook_agent.recommend import build_recommendation, load_entry
+from lab_notebook_agent.recorded_daily_agent import (
+    build_recorded_daily_agent_run,
+    build_snapshot_recorded_daily_agent_run,
+)
 from lab_notebook_agent.schema import SHEETS, workbook_contract
 from lab_notebook_agent.search import LocalSemanticIndex
 from lab_notebook_agent.sheets import (
@@ -260,6 +265,53 @@ class ScaffoldTests(unittest.TestCase):
                 [101, 103, 104, 102],
                 [request["appendCells"]["sheetId"] for request in requests],
             )
+
+    def test_recorded_daily_agent_projects_record_before_suggesting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            run = build_recorded_daily_agent_run(
+                tables,
+                sample_experiment_record(),
+                AgentRunConfig(),
+            )
+            self.assertEqual("lab-notebook-agent-recorded-daily-run.v1", run["schema"])
+            self.assertEqual("EP-010", run["experiment_id"])
+            self.assertEqual("2026-06-10", run["review_date"])
+            self.assertEqual(["EP-010"], run["selection"]["selected_experiment_ids"])
+            self.assertEqual(1, run["summary"]["suggestion_rows_to_append"])
+            self.assertEqual(1, run["summary"]["daily_review_rows_to_append"])
+            self.assertEqual(2, run["record_report"]["summary"]["daily_log_rows_to_append"])
+            self.assertEqual("EP-010", run["daily_agent_run"]["agent_report"]["runs"][0]["experiment_id"])
+
+    def test_recorded_daily_agent_snapshot_emits_combined_google_batch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            snapshot = snapshot_from_tables(
+                tables,
+                {
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Daily Log": 104,
+                    "Results": 102,
+                    "Agent Suggestions": 222,
+                    "Daily Reviews": 333,
+                },
+            )
+            run = build_snapshot_recorded_daily_agent_run(
+                snapshot,
+                sample_experiment_record(),
+                AgentRunConfig(),
+            )
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(6, run["summary"]["apply_request_count"])
+            self.assertEqual(
+                [101, 103, 104, 102, 222, 333],
+                [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
+            )
+            appended_experiment = run["apply_report"]["append_experiments"][0]
+            self.assertEqual("EP-010", appended_experiment["experiment_id"])
+            self.assertEqual("needs_review", appended_experiment["status"])
+            self.assertEqual([], run["apply_report"]["update_experiments"])
 
     def test_material_audit_detects_emulsion_roles_and_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1297,6 +1349,38 @@ class ScaffoldTests(unittest.TestCase):
             self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
             self.assertEqual(
                 [101, 103, 104, 102],
+                [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
+            )
+            self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_recorded_daily_agent_applies_combined_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx")),
+                    {
+                        "Experiments": 101,
+                        "Formulations": 103,
+                        "Daily Log": 104,
+                        "Results": 102,
+                        "Agent Suggestions": 222,
+                        "Daily Reviews": 333,
+                    },
+                )
+            )
+            run = run_live_google_recorded_daily_agent(
+                "spreadsheet-123",
+                client,
+                sample_experiment_record(),
+                config=AgentRunConfig(),
+                apply=True,
+            )
+            self.assertTrue(run["applied"])
+            self.assertEqual("lab-notebook-agent-live-google-recorded-daily-run.v1", run["schema"])
+            self.assertEqual("lab-notebook-agent-recorded-daily-run.v1", run["recorded_daily_run"]["schema"])
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(
+                [101, 103, 104, 102, 222, 333],
                 [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
             )
             self.assertEqual(1, len(client.batch_updates))
