@@ -303,7 +303,9 @@ does not depend on updating a row that does not exist yet.
 Normalize blank formulation quantity cells when the sheet already has enough
 inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or
 `moles_mmol` values from existing formulation quantities plus `Master Reagents`
-molecular weight and density fields:
+molecular weight and density fields. When at least two rows in an experiment
+have observed or derived mass, it also fills blank `wt_percent` cells from the
+total formulation mass:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \

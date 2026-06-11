@@ -668,6 +668,57 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("9.52381", updates["volume_mL"])
         self.assertEqual("64.028685", updates["moles_mmol"])
 
+    def test_formulation_normalization_derives_wt_percent_from_mass_total(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {"reagent_id": "W-DI", "density_g_mL": "1.0"},
+            ],
+            "Formulations": [
+                {
+                    "experiment_id": "EP-001",
+                    "reagent_id": "M-SKA",
+                    "phase": "monomer feed",
+                    "target_role": "core_monomer",
+                    "mass_g": "10",
+                    "volume_mL": "9.52381",
+                    "moles_mmol": "64.028685",
+                    "wt_percent": "",
+                },
+                {
+                    "experiment_id": "EP-001",
+                    "reagent_id": "I-APS",
+                    "phase": "initiator feed",
+                    "target_role": "initiator",
+                    "mass_g": "0.2",
+                    "moles_mmol": "0.693526",
+                    "wt_percent": "",
+                },
+                {
+                    "experiment_id": "EP-001",
+                    "reagent_id": "W-DI",
+                    "phase": "aqueous",
+                    "target_role": "solvent",
+                    "volume_mL": "89.8",
+                    "wt_percent": "",
+                },
+            ],
+        }
+
+        report = build_formulation_normalization_report(tables, experiment_ids=("EP-001",))
+
+        updates = {
+            (run["reagent_id"], update["field"]): update["value"]
+            for run in report["runs"]
+            for update in run["update_formulations"]
+        }
+        self.assertEqual("10", updates[("M-SKA", "wt_percent")])
+        self.assertEqual("0.2", updates[("I-APS", "wt_percent")])
+        self.assertEqual("89.8", updates[("W-DI", "mass_g")])
+        self.assertEqual("89.8", updates[("W-DI", "wt_percent")])
+        water_run = next(run for run in report["runs"] if run["reagent_id"] == "W-DI")
+        self.assertEqual(100, water_run["calculation"]["formulation_mass_total_g"])
+        self.assertEqual(4, report["summary"]["formulation_cells_to_update"])
+
     def test_formulation_normalization_apply_writes_updates_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
