@@ -62,6 +62,137 @@
       "search_terms": ["core shell latex acrylic impact modifier particle size Tg shell composition emulsion polymerization"]
     },
     {
+      "id": "workflow.reaction_sheet.columnar_experiments",
+      "process_type": "reaction sheet ingestion",
+      "summary": "Legacy reaction sheets often store one experiment per column, with rows grouped into sections such as Inputs, Outputs, Calculations, Reaction Parameters, Results, Notes, and Observations.",
+      "measurements": ["experiment_id", "date", "target_mass_g", "temperature_C", "rpm", "duration_min", "notes", "calculated_mass_g", "result_value", "visual_observation"],
+      "guidance": [
+        "When ingesting a reaction sheet, detect whether experiment IDs live across columns rather than down rows.",
+        "Section labels such as Inputs, Outputs, Calculations, Reaction Parameters, Results, Notes, and Observations should become structured fields before recommendation.",
+        "Preserve both planned values and weighed or observed values because old sheets often keep calculated masses next to actual net masses.",
+        "Treat notes and visual observations as result context, not just comments, because they often explain mixing, viscosity, cure, workup, or transfer failures."
+      ],
+      "source_evidence": [
+        "Google Drive sampled sheets: Baker's Reaction Sheet.xlsx, 2026 02 Sperry Rails Reactions, Pyrrolidone Monomer Synthesis, Nylon 4 Synthesis, Castor Oil Thiolation and Aminated Epoxidized Soybean Oil Synthesis, CTA Synthesis."
+      ],
+      "search_terms": ["reaction sheet columnar experiments inputs outputs calculations reaction parameters notes observations legacy spreadsheet"]
+    },
+    {
+      "id": "process.raft_polymerization.solution_calculations",
+      "process_type": "RAFT solution polymerization",
+      "summary": "RAFT polymer reaction sheets commonly calculate target molecular weight from monomer, chain-transfer agent, initiator ratio, conversion target, solvent ratio, inhibitor concentration, and reaction temperature.",
+      "material_roles": {
+        "monomer": ["butyl acrylate", "methyl methacrylate", "styrene", "AESO or acrylated bio-based monomer"],
+        "chain_transfer_agent": ["trithiocarbonate CTA", "benzodithioate CTA", "OXCART", "D-OXCART"],
+        "initiator": ["AIBN", "AMBN", "ACHN", "benzoyl peroxide", "dicumyl peroxide"],
+        "solvent": ["MeTHF", "dioxane", "toluene", "ethyl acetate"],
+        "inhibitor_or_additive": ["methylhydroquinone", "phenothiazine"]
+      },
+      "measurements": ["target_molecular_weight_g_mol", "target_conversion_percent", "monomer_mass_g", "monomer_moles", "initiator_to_cta_ratio", "cta_mass_g", "solvent_mass_g", "solvent_volume_mL", "reaction_temperature_C", "inhibitor_concentration"],
+      "guidance": [
+        "Record target molecular weight, desired conversion, monomer amount, solvent ratio, and initiator-to-CTA ratio before interpreting a RAFT polymerization result.",
+        "Keep CTA identity separate from initiator identity because the CTA controls target DP while initiator controls radical flux.",
+        "For viscous or bio-based monomers, capture inhibitor concentration, functionality, solvent mass, and actual CTA/initiator solution masses because these often explain drift from the target.",
+        "Follow-up suggestions should change one axis at a time: CTA ratio, initiator ratio, solvent fraction, temperature, or inhibitor handling."
+      ],
+      "source_evidence": [
+        "Baker's Reaction Sheet.xlsx tabs RAFT Polymer (BA), RAFT Polymer (AESO), CyCART/OXCART-related sheets."
+      ],
+      "search_terms": ["RAFT polymerization target molecular weight AIBN CTA trithiocarbonate solvent ratio conversion inhibitor reaction temperature"]
+    },
+    {
+      "id": "process.polyurethane_network.stoichiometry",
+      "process_type": "polyurethane network curing",
+      "summary": "Polyurethane and elastomer reaction sheets commonly track NCO index, total OH basis, OH fractions, polyol/crosslinker masses, catalyst master batch, net weighed masses, hardness, texture, working time, and mixing limits.",
+      "material_roles": {
+        "polyol": ["PolyTHF", "PPG", "PEG polyol", "ESO polyol"],
+        "isocyanate": ["MDI", "IPDI"],
+        "chain_extender_or_crosslinker": ["BDO", "TMP", "DETA", "DEE"],
+        "catalyst": ["DBTDL", "DABCO", "catalyst master batch"],
+        "carrier_or_masterbatch": ["active master batch", "carrier polyol"]
+      },
+      "measurements": ["nco_index", "total_oh_basis_eq", "oh_fraction_percent", "gross_mass_g", "net_mass_g", "catalyst_ratio", "hardness_shore_A", "working_time_s", "visual_texture", "outcome"],
+      "guidance": [
+        "Validate OH fraction sums and calculated NCO index before recommending a polyurethane follow-up.",
+        "Capture gross calculated masses and net weighed masses separately so mix or transfer errors can be diagnosed.",
+        "Use hardness, working time, viscosity rise, bubbles, crumbly texture, and transfer difficulty as result signals.",
+        "If a sample cures too fast or becomes mass-transfer limited, adjust chain extender ratio, catalyst level, prepolymer order, or mixing sequence before changing the entire formulation."
+      ],
+      "source_evidence": [
+        "2026 02 Sperry Rails Reactions tabs Experimental log and Results."
+      ],
+      "search_terms": ["polyurethane NCO index OH fraction catalyst master batch hardness Shore A working time viscosity mixing crumbly"]
+    },
+    {
+      "id": "process.nylon4.pyrrolidone_synthesis",
+      "process_type": "nylon 4 monomer and polymer synthesis",
+      "summary": "Pyrrolidone and Nylon 4 synthesis sheets track target product mass, lysine or pyrrolidone concentration, solvent/cosolvent choice, temperature, RPM, duration, distillation or CO2 addition conditions, and NMR-derived formation metrics.",
+      "material_roles": {
+        "monomer_or_precursor": ["L-lysine", "2-pyrrolidone", "caprolactone"],
+        "base_or_initiator": ["TBuOK"],
+        "phase_transfer_or_salt": ["TBAHS", "TMACl"],
+        "solvent": ["acetophenone", "MEK", "pyrrolidone"],
+        "gas_or_process_reagent": ["CO2"]
+      },
+      "measurements": ["target_product_mass_g", "precursor_concentration_M", "temperature_C", "rpm", "duration_min", "solvent_volume_mL", "co2_pressure_psi", "co2_flow_rate_cfh", "nmr_integral", "formation_percent", "mass_removed_g"],
+      "guidance": [
+        "For pyrrolidone formation, record precursor concentration, solvent choice, temperature, RPM, duration, and whether acid hydrolysis or distillation was used.",
+        "For Nylon 4 polymerization, keep predry and postdry masses, base equivalents, phase-transfer salt concentration, CO2 pressure/flow, and addition order explicit.",
+        "NMR integral ratios and formation percent should be normalized into Results so follow-up suggestions can connect conditions to conversion.",
+        "When a note mentions distillation, vacuum, CO2 addition, or hydrolysis, treat it as a process-stage variable for follow-up planning."
+      ],
+      "source_evidence": [
+        "Pyrrolidone Monomer Synthesis tab PA4-M-8 and Nylon 4 Synthesis tab PA4-10."
+      ],
+      "search_terms": ["Nylon 4 pyrrolidone synthesis lysine acetophenone TBuOK TBAHS CO2 NMR formation percent distillation hydrolysis"]
+    },
+    {
+      "id": "process.bio_oil_derivatization.amination_thiolation",
+      "process_type": "bio-based oil amination and thiolation",
+      "summary": "Bio-based oil derivatization sheets track substrate ratios, catalyst or inhibitor identity, solvent loading, stepwise feed order, water removal, and molar balance for thiolation, amination, amidation, and isocyanate reactions.",
+      "material_roles": {
+        "bio_based_substrate": ["hydroxylated ESO", "epoxidized soybean oil", "epoxidized methyl soyate", "castor oil derivative"],
+        "functional_reagent": ["MAA", "DEE", "MDI", "IPDI", "thiol", "amine"],
+        "polyol_or_chain_extender": ["ESO polyol", "PEG400"],
+        "catalyst": ["p-TSA", "DBTDL", "DABCO"],
+        "inhibitor": ["phenothiazine"],
+        "solvent": ["toluene"]
+      },
+      "measurements": ["substrate_mass_g", "reagent_equivalents", "reagent_mass_g", "solvent_to_substrate_ratio", "catalyst_wt_percent", "reaction_temperature_C", "reaction_duration_hr", "theoretical_water_g", "actual_water_g", "molar_balance"],
+      "guidance": [
+        "Capture catalyst, inhibitor, and solvent identity alongside mass charges because these rows are often separated from the main material list.",
+        "For Dean-Stark or water-producing reactions, record theoretical and actual water collected as a conversion or completion signal.",
+        "For amination or isocyanate reactions, preserve feed order and hold time because the sheets distinguish heat-up, syringe feed, and overnight hold steps.",
+        "Follow-up suggestions should reference molar balance, water removal, catalyst loading, and observed notes before changing substrate chemistry."
+      ],
+      "source_evidence": [
+        "Castor Oil Thiolation and Aminated Epoxidized Soybean Oil Synthesis tabs Master Sheet, Amination-11, and Thiolation-2."
+      ],
+      "search_terms": ["bio based oil thiolation amination epoxidized soybean oil MAA HESO PTSA Dean Stark water production IPDI DBTDL"]
+    },
+    {
+      "id": "process.cta_synthesis.trithiocarbonate",
+      "process_type": "RAFT chain-transfer agent synthesis",
+      "summary": "RAFT CTA synthesis sheets commonly record thiol, carbon disulfide, base, water, ketone or sulfonyl chloride electrophile, solvent, addition order, temperature control, and reaction timing.",
+      "material_roles": {
+        "thiol": ["ethanethiol", "dodecanethiol"],
+        "carbon_disulfide": ["carbon disulfide"],
+        "base": ["potassium hydroxide"],
+        "electrophile": ["3-chloro-2-butanone", "toluene sulfonyl chloride"],
+        "solvent_or_phase": ["water", "acetone", "ethyl acetate", "toluene"]
+      },
+      "measurements": ["reagent_mass_g", "reagent_moles", "reagent_volume_mL", "molecular_weight_g_mol", "density_g_mL", "equivalents", "addition_time", "reaction_temperature_C", "hold_time_min"],
+      "guidance": [
+        "CTA synthesis planning should preserve stoichiometric equivalents, addition sequence, and temperature-control notes, not just final reagent totals.",
+        "Dropwise additions, ice bath, reflux, and timed holds are process-stage observations that should become Daily Log entries.",
+        "If a CTA is later used in polymerization, link the CTA synthesis evidence to the Master Reagents lot or notes field."
+      ],
+      "source_evidence": [
+        "CTA Synthesis tabs CyCART-1 and OXCART-1."
+      ],
+      "search_terms": ["RAFT CTA synthesis trithiocarbonate carbon disulfide thiol potassium hydroxide addition order ice bath OXCART CyCART"]
+    },
+    {
       "id": "workflow.lab_notebook.data_quality",
       "process_type": "daily lab notebook",
       "summary": "A useful lab notebook agent needs structured reagent identities, exact quantities, timestamps, observations, measurements, and links to evidence before it can recommend a defensible next run.",

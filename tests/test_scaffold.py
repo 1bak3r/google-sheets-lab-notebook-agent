@@ -182,6 +182,43 @@ class ScaffoldTests(unittest.TestCase):
         self.assertTrue(results)
         self.assertIn("emulsion polymerization", results[0].record["process_type"])
 
+    def test_semantic_search_finds_drive_reaction_sheet_patterns(self) -> None:
+        results = LocalSemanticIndex.from_default().search(
+            "columnar reaction sheet inputs outputs calculations reaction parameters observations",
+            k=6,
+        )
+        result_ids = {result.record["id"] for result in results}
+        self.assertIn("workflow.reaction_sheet.columnar_experiments", result_ids)
+
+    def test_semantic_search_finds_google_drive_reaction_families(self) -> None:
+        cases = [
+            (
+                "RAFT target molecular weight AIBN CTA solvent ratio inhibitor",
+                "process.raft_polymerization.solution_calculations",
+            ),
+            (
+                "polyurethane NCO index OH fractions hardness Shore A working time viscosity",
+                "process.polyurethane_network.stoichiometry",
+            ),
+            (
+                "Nylon 4 pyrrolidone TBuOK TBAHS CO2 NMR formation percent",
+                "process.nylon4.pyrrolidone_synthesis",
+            ),
+            (
+                "bio based oil thiolation amination PTSA Dean Stark water production IPDI DBTDL",
+                "process.bio_oil_derivatization.amination_thiolation",
+            ),
+            (
+                "RAFT CTA synthesis carbon disulfide thiol potassium hydroxide addition order ice bath",
+                "process.cta_synthesis.trithiocarbonate",
+            ),
+        ]
+        for query, expected_id in cases:
+            with self.subTest(expected_id=expected_id):
+                results = LocalSemanticIndex.from_default().search(query, k=8)
+                result_ids = {result.record["id"] for result in results}
+                self.assertIn(expected_id, result_ids)
+
     def test_notebook_search_finds_reagents_and_process_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
