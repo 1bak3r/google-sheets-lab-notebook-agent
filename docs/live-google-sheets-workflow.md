@@ -383,6 +383,10 @@ appendable agent report, a compact Daily Reviews status row, Experiments
 status/next-step/summary updates, the pre-apply audit, and the Google Sheets
 `batchUpdate` payload from one snapshot:
 
+Pending Results rows from Daily Log normalization are projected into the
+in-memory preflight and recommendation pass before the batch is assembled, so
+same-day measurements can drive `result_analysis` immediately.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
   --snapshot artifacts/live-sheet-snapshot.json \

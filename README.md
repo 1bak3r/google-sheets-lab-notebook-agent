@@ -321,6 +321,10 @@ rows, the summary, per-experiment preflight checks, role-aware material search,
 literature evidence rows, suggestion rows, a compact `Daily Reviews` row, and
 `Experiments` status/next-step/summary updates from one command:
 
+Pending Results rows from Daily Log normalization are projected into the
+in-memory review before suggestions are generated, so same-day measurements can
+drive `result_analysis` without waiting for a separate apply step.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
   --workbook artifacts/lab_notebook_template.xlsx \

@@ -36,16 +36,17 @@ def build_daily_agent_run(
         review_date=review_date,
         experiment_ids=config.experiment_ids,
     )
-    agent_report = build_agent_report(tables, config=config)
-    experiment_reviews = build_daily_experiment_reviews(
-        tables,
-        selected_experiment_ids(agent_report, daily_summary),
-        daily_summary=daily_summary,
-    )
     daily_log_results_report = build_daily_log_results_report(
         tables,
-        experiment_ids=tuple(selected_experiment_ids(agent_report, daily_summary)),
+        experiment_ids=tuple(daily_summary.get("selection", {}).get("selected_experiment_ids", [])),
         review_date=review_date,
+    )
+    projected_tables = project_daily_log_results_into_tables(tables, daily_log_results_report)
+    agent_report = build_agent_report(projected_tables, config=config)
+    experiment_reviews = build_daily_experiment_reviews(
+        projected_tables,
+        selected_experiment_ids(agent_report, daily_summary),
+        daily_summary=daily_summary,
     )
     run = assemble_daily_agent_run(
         daily_summary,
@@ -59,6 +60,24 @@ def build_daily_agent_run(
     run["summary"]["experiment_cells_to_update"] = len(run["update_experiments"])
     run["summary"]["suggestion_rows_to_update"] = len(run["update_agent_suggestions"])
     return run
+
+
+def project_daily_log_results_into_tables(
+    tables: dict[str, list[dict[str, Any]]],
+    daily_log_results_report: dict[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    result_rows = [
+        dict(result_row)
+        for run in daily_log_results_report.get("runs", []) or []
+        if isinstance(run, dict)
+        for result_row in run.get("append_results", []) or []
+        if isinstance(result_row, dict)
+    ]
+    if not result_rows:
+        return tables
+    projected = {sheet_name: list(rows) for sheet_name, rows in tables.items()}
+    projected["Results"] = [*projected.get("Results", []), *result_rows]
+    return projected
 
 
 def build_snapshot_daily_agent_run(

@@ -1639,6 +1639,25 @@ class ScaffoldTests(unittest.TestCase):
             roles = {role["role_group"]: role for role in review["material_search"]["roles"]}
             self.assertEqual("M-SKA", roles["monomer"]["candidate_reagents"][0]["reagent_id"])
 
+    def test_daily_agent_projects_normalized_daily_log_results_into_suggestions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            complete_template_materials(tables)
+            tables["Results"] = []
+
+            run = build_daily_agent_run(
+                tables,
+                AgentRunConfig(review_date="2026-06-09"),
+            )
+
+            self.assertEqual(3, run["summary"]["normalized_result_rows_to_append"])
+            suggestion = run["agent_report"]["runs"][0]["append_agent_suggestions"][0]
+            self.assertIn("particle_size_high", suggestion["result_analysis"]["signals"])
+            self.assertTrue(suggestion["proposed_experiment_plan"]["result_support"]["limiting_metrics"])
+            checks = {row["name"]: row for row in run["experiment_reviews"][0]["preflight"]["checks"]}
+            self.assertEqual("pass", checks["results_measurements"]["status"])
+
     def test_daily_review_row_includes_result_limit_action(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
