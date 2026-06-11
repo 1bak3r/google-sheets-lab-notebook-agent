@@ -356,9 +356,10 @@ def build_proposed_experiment_plan(
             historical_context,
         )
     experiment_id = str(entry.get("experiment_id", "unassigned"))
+    suggested_experiment_id = str(entry.get("suggested_experiment_id", "")).strip() or f"{experiment_id}-FUP-001"
     return {
         "parent_experiment_id": experiment_id,
-        "suggested_experiment_id": f"{experiment_id}-FUP-001",
+        "suggested_experiment_id": suggested_experiment_id,
         "process_type": process_type,
         "objective": f"Follow up {entry.get('objective', 'the current objective')} with one isolated variable.",
         "hypothesis": "Changing one variable at a time will make the result interpretable.",
@@ -390,7 +391,7 @@ def build_emulsion_polymerization_plan(
     historical_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experiment_id = str(entry.get("experiment_id", "EP"))
-    suggested_experiment_id = f"{experiment_id}-FUP-001"
+    suggested_experiment_id = str(entry.get("suggested_experiment_id", "")).strip() or f"{experiment_id}-FUP-001"
     variables = [
         {
             "factor": "baseline_repeat",

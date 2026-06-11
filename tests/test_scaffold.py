@@ -13,6 +13,7 @@ from lab_notebook_agent.agent import (
     AgentRunConfig,
     build_agent_report,
     notebook_context_matches,
+    next_followup_experiment_id,
     run_workbook_agent,
     selected_experiment_ids,
 )
@@ -1662,6 +1663,33 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("ready", report["runs"][0]["status"])
             self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
             self.assertEqual("existing_evidence", report["runs"][0]["litscout_status"]["status"])
+            suggestion = report["runs"][0]["append_agent_suggestions"][0]
+            self.assertEqual("EP-001-FUP-002", suggestion["proposed_experiment_plan"]["suggested_experiment_id"])
+
+    def test_next_followup_experiment_id_uses_existing_experiments_and_suggestions(self) -> None:
+        tables = {
+            "Experiments": [
+                {"experiment_id": "EP-001"},
+                {"experiment_id": "EP-001-FUP-001"},
+                {"experiment_id": "EP-001-FUP-003"},
+                {"experiment_id": "EP-002-FUP-009"},
+            ],
+            "Agent Suggestions": [
+                {
+                    "suggestion_id": "SUG-001",
+                    "experiment_id": "EP-001",
+                    "proposed_experiment_id": "EP-001-FUP-002",
+                    "status": "run_complete",
+                },
+                {
+                    "suggestion_id": "SUG-002",
+                    "experiment_id": "EP-001",
+                    "proposed_plan_json": json.dumps({"suggested_experiment_id": "EP-001-FUP-004"}),
+                    "status": "rejected",
+                },
+            ],
+        }
+        self.assertEqual("EP-001-FUP-005", next_followup_experiment_id(tables, "EP-001"))
 
     def test_google_batch_requests_from_agent_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

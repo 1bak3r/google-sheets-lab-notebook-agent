@@ -592,6 +592,12 @@ reviewable before execution:
 - `sheet_rows` with draft `Experiments` values, copied/reviewable
   `Formulations` rows, and expected `Results` measurements to capture.
 
+When the agent generates a follow-up suggestion from a workbook or Google
+Sheets snapshot, `suggested_experiment_id` is allocated from existing
+`Experiments` rows and previous `Agent Suggestions` for that parent experiment.
+If `EP-001-FUP-001` already exists or was previously suggested, the next draft
+uses `EP-001-FUP-002` rather than colliding with the older follow-up.
+
 For emulsion polymerization entries, the plan isolates particle-size,
 coagulum/stability, and conversion signals into controlled follow-up variables
 such as surfactant package, surfactant active basis, monomer feed duration, and

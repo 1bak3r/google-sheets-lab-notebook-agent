@@ -486,6 +486,10 @@ Each suggestion also includes `result_analysis`, and the proposed plan includes
 Agent runs also include `historical_context`, and proposed plans include
 `history_support`, so same-process prior Results rows can be used as controls
 or benchmarks when reviewing the next experiment.
+Follow-up experiment IDs are allocated from the live sheet snapshot: if a parent
+experiment already has `EP-001-FUP-001` in `Experiments` or prior
+`Agent Suggestions`, the next draft uses `EP-001-FUP-002` to avoid
+materialization collisions.
 
 ## 8. Audit Before Applying
 

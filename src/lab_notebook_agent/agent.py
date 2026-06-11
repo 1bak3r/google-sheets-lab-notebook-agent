@@ -80,6 +80,7 @@ def build_agent_report(
         notebook_matches = notebook_context_matches(tables, query, experiment_id, limit=config.context_limit)
         historical_context = build_historical_result_context(tables, experiment_id, limit=config.history_limit)
         entry["historical_context"] = historical_context
+        entry["suggested_experiment_id"] = next_followup_experiment_id(tables, experiment_id)
         existing_evidence = evidence_for_experiment(tables, experiment_id)
         new_evidence = []
         litscout_export_path = config.litscout_export
@@ -350,6 +351,59 @@ def suggestions_for_experiment(tables: dict[str, list[dict[str, Any]]], experime
         if str(row.get("experiment_id", "")) == experiment_id
         and str(row.get("status", "")).lower() in OPEN_SUGGESTION_STATUSES
     ]
+
+
+def next_followup_experiment_id(tables: dict[str, list[dict[str, Any]]], experiment_id: str) -> str:
+    prefix = f"{experiment_id}-FUP-"
+    used_numbers = [
+        number
+        for candidate_id in used_followup_experiment_ids(tables, experiment_id)
+        for number in [followup_number(candidate_id, prefix)]
+        if number is not None
+    ]
+    next_number = max(used_numbers, default=0) + 1
+    return f"{prefix}{next_number:03d}"
+
+
+def used_followup_experiment_ids(tables: dict[str, list[dict[str, Any]]], experiment_id: str) -> list[str]:
+    ids = []
+    for row in tables.get("Experiments", []):
+        if not isinstance(row, dict):
+            continue
+        candidate_id = str(row.get("experiment_id", "")).strip()
+        if candidate_id:
+            ids.append(candidate_id)
+    for row in tables.get("Agent Suggestions", []):
+        if not isinstance(row, dict) or str(row.get("experiment_id", "")).strip() != experiment_id:
+            continue
+        candidate_id = str(row.get("proposed_experiment_id", "")).strip()
+        if candidate_id:
+            ids.append(candidate_id)
+            continue
+        plan = parse_suggestion_plan_json(row.get("proposed_plan_json", ""))
+        candidate_id = str(plan.get("suggested_experiment_id", "")).strip() if plan else ""
+        if candidate_id:
+            ids.append(candidate_id)
+    return ids
+
+
+def followup_number(candidate_id: str, prefix: str) -> int | None:
+    if not candidate_id.startswith(prefix):
+        return None
+    suffix = candidate_id[len(prefix):]
+    return int(suffix) if suffix.isdigit() else None
+
+
+def parse_suggestion_plan_json(raw_plan: Any) -> dict[str, Any] | None:
+    if isinstance(raw_plan, dict):
+        return raw_plan
+    if not isinstance(raw_plan, str) or not raw_plan.strip():
+        return None
+    try:
+        parsed = json.loads(raw_plan)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def evidence_for_experiment(tables: dict[str, list[dict[str, Any]]], experiment_id: str) -> list[dict[str, Any]]:
