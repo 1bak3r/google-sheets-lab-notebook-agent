@@ -260,10 +260,15 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
   --batch-output artifacts/live-sheet-record-ep-010-batch.json
 ```
 
-The batch appends `Experiments`, `Formulations`, `Daily Log`, and `Results`
-rows. Proceed only if the audit is valid; otherwise fix duplicate experiment
-IDs, duplicate Daily Log timestamps/observations, or missing sheet IDs before
-applying.
+The record may include top-level `master_reagents` or `reagents`, nested
+`formulation[].reagent` objects, or prefixed formulation fields such as
+`reagent_density_g_mL` and `reagent_supplier`. When the snapshot includes
+`Master Reagents`, the batch appends new reagent rows and fills blank cells on
+existing rows by `reagent_id`; conflicting nonblank values are returned as
+warnings and are not overwritten. The same batch appends `Experiments`,
+`Formulations`, `Daily Log`, and `Results` rows. Proceed only if the audit is
+valid; otherwise fix duplicate experiment IDs, duplicate Daily Log
+timestamps/observations, or missing sheet IDs before applying.
 
 Use the combined record-plus-daily command when a newly captured record should
 immediately drive normalized Results, LitScout-backed evidence, an Agent

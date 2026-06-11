@@ -584,9 +584,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "record-experiment":
-        report = build_experiment_record_report(load_experiment_record(args.record))
         snapshot = None
         audit = None
+        record_tables = None
+        if args.workbook:
+            record_tables = load_workbook_tables(args.workbook)
+        elif args.snapshot:
+            snapshot = load_sheet_snapshot(args.snapshot)
+            record_tables = snapshot_to_tables(snapshot)
+        report = build_experiment_record_report(load_experiment_record(args.record), tables=record_tables)
         if args.apply:
             if not args.workbook:
                 raise SystemExit("--apply requires --workbook.")
@@ -598,7 +604,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.audit_output or args.batch_output:
             if not args.snapshot:
                 raise SystemExit("--audit-output and --batch-output require --snapshot so sheet IDs are available.")
-            snapshot = load_sheet_snapshot(args.snapshot)
+            if snapshot is None:
+                snapshot = load_sheet_snapshot(args.snapshot)
             audit = audit_report_against_snapshot(report, snapshot, require_sheet_ids=True)
         if args.report_output:
             write_or_print_json(report, args.report_output)

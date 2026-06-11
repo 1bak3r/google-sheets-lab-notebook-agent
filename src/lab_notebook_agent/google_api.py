@@ -258,7 +258,7 @@ def run_live_google_experiment_record(
 ) -> dict[str, Any]:
     snapshot = capture_snapshot_from_google_sheets(spreadsheet_id, client, value_range=value_range)
     snapshot_audit = validate_snapshot(snapshot, require_sheet_ids=False)
-    report = build_experiment_record_report(record)
+    report = build_experiment_record_report(record, tables=snapshot_to_tables(snapshot))
     apply_audit = audit_report_against_snapshot(report, snapshot, require_sheet_ids=True)
     requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot)) if apply_audit["valid"] else []
     response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}

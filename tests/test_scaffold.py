@@ -260,6 +260,64 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("observed", report["append_results"][0]["quality_flag"])
         self.assertEqual([], report["warnings"])
 
+    def test_experiment_record_upserts_inline_reagent_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            record = sample_experiment_record()
+            record["formulation"][0]["reagent"] = {
+                "reagent_id": "S-SDS",
+                "name": "sodium dodecyl sulfate",
+                "category": "surfactant",
+                "molecular_weight_g_mol": "288.38",
+                "density_g_mL": "1.01",
+                "supplier": "Sigma",
+            }
+            report = build_experiment_record_report(record, tables=load_workbook_tables(workbook_path))
+            self.assertEqual(0, report["summary"]["master_reagent_rows_to_append"])
+            self.assertEqual(2, report["summary"]["master_reagent_cells_to_update"])
+            updates = {row["field"]: row["value"] for row in report["update_master_reagents"]}
+            self.assertEqual("1.01", updates["density_g_mL"])
+            self.assertEqual("Sigma", updates["supplier"])
+            self.assertEqual([], report["warnings"])
+
+    def test_experiment_record_warns_on_master_reagent_conflict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            record = sample_experiment_record()
+            record["formulation"][0]["reagent"] = {
+                "reagent_id": "S-SDS",
+                "molecular_weight_g_mol": "300",
+                "density_g_mL": "1.01",
+            }
+            report = build_experiment_record_report(record, tables=load_workbook_tables(workbook_path))
+            self.assertEqual(1, report["summary"]["master_reagent_cells_to_update"])
+            self.assertEqual(
+                [
+                    {
+                        "code": "master_reagent_field_conflict",
+                        "sheet": "Master Reagents",
+                        "reagent_id": "S-SDS",
+                        "field": "molecular_weight_g_mol",
+                        "existing_value": "288.38",
+                        "proposed_value": "300",
+                    }
+                ],
+                report["warnings"],
+            )
+
+    def test_experiment_record_appends_new_inline_reagent_metadata(self) -> None:
+        record = sample_experiment_record()
+        record["formulation"][0]["reagent_id"] = "S-NEW"
+        record["formulation"][0]["reagent_name"] = "new nonionic surfactant"
+        record["formulation"][0]["reagent_category"] = "surfactant"
+        record["formulation"][0]["reagent_molecular_weight_g_mol"] = "650"
+        report = build_experiment_record_report(record)
+        self.assertEqual(1, report["summary"]["master_reagent_rows_to_append"])
+        reagent = report["append_master_reagents"][0]
+        self.assertEqual("S-NEW", reagent["reagent_id"])
+        self.assertEqual("new nonionic surfactant", reagent["name"])
+        self.assertEqual("650", reagent["molecular_weight_g_mol"])
+
     def test_experiment_record_report_appends_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
@@ -270,6 +328,23 @@ class ScaffoldTests(unittest.TestCase):
             self.assertTrue(any(row["experiment_id"] == "EP-010" for row in tables["Experiments"]))
             self.assertTrue(any(row["experiment_id"] == "EP-010" for row in tables["Daily Log"]))
             self.assertTrue(any(row["sample_id"] == "EP-010-R-001" for row in tables["Results"]))
+
+    def test_experiment_record_apply_updates_existing_master_reagent_cells(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output_path = Path(tmpdir) / "recorded-reagent-update.xlsx"
+            record = sample_experiment_record()
+            record["formulation"][0]["reagent"] = {
+                "reagent_id": "S-SDS",
+                "density_g_mL": "1.01",
+                "supplier": "Sigma",
+            }
+            report = build_experiment_record_report(record, tables=load_workbook_tables(workbook_path))
+            apply_experiment_record_report_to_workbook(workbook_path, report, output_workbook=output_path)
+            tables = load_workbook_tables(output_path)
+            sds = next(row for row in tables["Master Reagents"] if row["reagent_id"] == "S-SDS")
+            self.assertEqual("1.01", sds["density_g_mL"])
+            self.assertEqual("Sigma", sds["supplier"])
 
     def test_experiment_record_snapshot_emits_daily_log_google_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -290,6 +365,36 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(
                 [101, 103, 104, 102],
                 [request["appendCells"]["sheetId"] for request in requests],
+            )
+
+    def test_experiment_record_snapshot_emits_master_reagent_update_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            snapshot = snapshot_from_tables(
+                load_workbook_tables(workbook_path),
+                {
+                    "Master Reagents": 100,
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Daily Log": 104,
+                    "Results": 102,
+                },
+            )
+            record = sample_experiment_record()
+            record["formulation"][0]["reagent"] = {
+                "reagent_id": "S-SDS",
+                "density_g_mL": "1.01",
+            }
+            report = build_experiment_record_report(record, tables=snapshot_to_tables(snapshot))
+            audit = audit_report_against_snapshot(report, snapshot)
+            self.assertTrue(audit["valid"], audit["errors"])
+            requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot))
+            self.assertEqual(5, len(requests))
+            self.assertEqual(100, requests[0]["updateCells"]["start"]["sheetId"])
+            self.assertEqual(6, requests[0]["updateCells"]["start"]["columnIndex"])
+            self.assertEqual(
+                "1.01",
+                requests[0]["updateCells"]["rows"][0]["values"][0]["userEnteredValue"]["stringValue"],
             )
 
     def test_recorded_daily_agent_projects_record_before_suggesting(self) -> None:

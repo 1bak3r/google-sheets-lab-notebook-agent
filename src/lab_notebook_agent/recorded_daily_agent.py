@@ -22,7 +22,7 @@ def build_recorded_daily_agent_run(
     record: dict[str, Any],
     config: AgentRunConfig,
 ) -> dict[str, Any]:
-    record_report = build_experiment_record_report(record)
+    record_report = build_experiment_record_report(record, tables=tables)
     effective_config = config_for_record(config, record_report)
     projected_tables = tables_with_record_report(tables, record_report)
     daily_run = build_daily_agent_run(projected_tables, effective_config)
@@ -117,6 +117,11 @@ def apply_recorded_daily_agent_run_to_workbook(
             append_rows_to_workbook(current, sheet_name, rows, destination)
             current = destination
 
+    master_reagent_updates = dict_rows(apply_report.get("update_master_reagents", []))
+    if master_reagent_updates:
+        update_workbook_rows_by_key(current, "Master Reagents", master_reagent_updates, output_path=destination)
+        current = destination
+
     run_rows = dict_rows(apply_report.get("runs", []))
     result_rows = nested_report_rows(run_rows, "append_results")
     if result_rows:
@@ -158,6 +163,7 @@ def build_recorded_daily_apply_report(
         "schema": "lab-notebook-agent-recorded-daily-apply.v1",
         "summary": {
             "master_reagent_rows_to_append": int(record_summary.get("master_reagent_rows_to_append", 0) or 0),
+            "master_reagent_cells_to_update": int(record_summary.get("master_reagent_cells_to_update", 0) or 0),
             "experiment_rows_to_append": len(experiment_rows),
             "formulation_rows_to_append": int(record_summary.get("formulation_rows_to_append", 0) or 0),
             "daily_log_rows_to_append": int(record_summary.get("daily_log_rows_to_append", 0) or 0),
@@ -169,6 +175,7 @@ def build_recorded_daily_apply_report(
             "experiment_cells_to_update": len(updates),
         },
         "append_master_reagents": record_report.get("append_master_reagents", []),
+        "update_master_reagents": record_report.get("update_master_reagents", []),
         "append_experiments": experiment_rows,
         "append_formulations": record_report.get("append_formulations", []),
         "append_daily_log": record_report.get("append_daily_log", []),
@@ -231,7 +238,28 @@ def tables_with_record_report(
         projected[sheet_name].extend(
             dict(row) for row in record_report.get(report_key, []) if isinstance(row, dict)
         )
+    apply_projected_updates(projected, "Master Reagents", record_report.get("update_master_reagents", []))
     return projected
+
+
+def apply_projected_updates(
+    tables: dict[str, list[dict[str, Any]]],
+    sheet_name: str,
+    updates: Any,
+) -> None:
+    rows = tables.setdefault(sheet_name, [])
+    for update in updates or []:
+        if not isinstance(update, dict):
+            continue
+        key_field = str(update.get("key_field", "") or "reagent_id").strip()
+        key_value = str(update.get("key_value", "") or update.get(key_field, "")).strip()
+        target_field = str(update.get("field", "")).strip()
+        if not key_field or not key_value or not target_field:
+            continue
+        for row in rows:
+            if isinstance(row, dict) and str(row.get(key_field, "")).strip() == key_value:
+                row[target_field] = update.get("value", "")
+                break
 
 
 def config_for_record(config: AgentRunConfig, record_report: dict[str, Any]) -> AgentRunConfig:

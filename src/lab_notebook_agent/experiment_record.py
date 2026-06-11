@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .schema import sheet_by_name
-from .sheets import append_rows_to_workbook
+from .sheets import append_rows_to_workbook, update_workbook_rows_by_key
 
 
 def load_experiment_record(path: str | Path) -> dict[str, Any]:
@@ -16,20 +16,25 @@ def load_experiment_record(path: str | Path) -> dict[str, Any]:
     return data
 
 
-def build_experiment_record_report(record: dict[str, Any]) -> dict[str, Any]:
+def build_experiment_record_report(
+    record: dict[str, Any],
+    tables: dict[str, list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
     experiment = experiment_row_from_record(record)
     experiment_id = str(record.get("experiment_id") or experiment.get("experiment_id", "")).strip()
     if not experiment_id:
         raise ValueError("Experiment record must include experiment_id or experiment.experiment_id.")
     experiment["experiment_id"] = experiment_id
 
-    master_reagents = [
-        project_sheet_row("Master Reagents", row)
-        for row in record_list(record, "master_reagents", "reagents")
-    ]
+    formulation_items = record_list(record, "formulations", "formulation")
+    master_reagent_candidates = master_reagent_rows_from_record(record, formulation_items)
+    master_reagents, master_reagent_updates, master_reagent_warnings = reconcile_master_reagent_rows(
+        master_reagent_candidates,
+        tables or {},
+    )
     formulations = [
         with_default_experiment_id(project_sheet_row("Formulations", row), experiment_id)
-        for row in record_list(record, "formulations", "formulation")
+        for row in formulation_items
     ]
     daily_log = [
         daily_log_row_from_record_item(item, experiment_id, record, index)
@@ -45,11 +50,13 @@ def build_experiment_record_report(record: dict[str, Any]) -> dict[str, Any]:
     warnings.extend(missing_required_warnings("Formulations", formulations))
     warnings.extend(missing_required_warnings("Daily Log", daily_log))
     warnings.extend(missing_required_warnings("Results", results))
+    warnings.extend(master_reagent_warnings)
 
     return {
         "schema": "lab-notebook-agent-experiment-record.v1",
         "experiment_id": experiment_id,
         "append_master_reagents": master_reagents,
+        "update_master_reagents": master_reagent_updates,
         "append_experiments": experiment_rows,
         "append_formulations": formulations,
         "append_daily_log": daily_log,
@@ -57,6 +64,7 @@ def build_experiment_record_report(record: dict[str, Any]) -> dict[str, Any]:
         "warnings": warnings,
         "summary": {
             "master_reagent_rows_to_append": len(master_reagents),
+            "master_reagent_cells_to_update": len(master_reagent_updates),
             "experiment_rows_to_append": len(experiment_rows),
             "formulation_rows_to_append": len(formulations),
             "daily_log_rows_to_append": len(daily_log),
@@ -84,6 +92,9 @@ def apply_experiment_record_report_to_workbook(
         if rows:
             append_rows_to_workbook(current, sheet_name, rows, destination)
             current = destination
+    master_reagent_updates = [row for row in report.get("update_master_reagents", []) if isinstance(row, dict)]
+    if master_reagent_updates:
+        update_workbook_rows_by_key(current, "Master Reagents", master_reagent_updates, output_path=destination)
     return destination
 
 
@@ -109,6 +120,123 @@ def record_list(record: dict[str, Any], *keys: str) -> list[Any]:
             return value
         return [value]
     return []
+
+
+def master_reagent_rows_from_record(record: dict[str, Any], formulation_items: list[Any]) -> list[dict[str, Any]]:
+    rows = [
+        project_sheet_row("Master Reagents", row)
+        for row in record_list(record, "master_reagents", "reagents")
+        if isinstance(row, dict)
+    ]
+    for item in formulation_items:
+        if isinstance(item, dict):
+            row = master_reagent_row_from_formulation_item(item)
+            if row:
+                rows.append(row)
+    return merge_master_reagent_rows(rows)
+
+
+def master_reagent_row_from_formulation_item(item: dict[str, Any]) -> dict[str, Any] | None:
+    reagent = dict(item.get("reagent")) if isinstance(item.get("reagent"), dict) else {}
+    if item.get("reagent_id") and not reagent.get("reagent_id"):
+        reagent["reagent_id"] = item.get("reagent_id")
+    prefixed_fields = {
+        "reagent_name": "name",
+        "reagent_common_name": "common_name",
+        "reagent_category": "category",
+        "reagent_role": "role",
+        "reagent_molecular_weight_g_mol": "molecular_weight_g_mol",
+        "reagent_density_g_mL": "density_g_mL",
+        "reagent_purity_fraction": "purity_fraction",
+        "reagent_concentration": "concentration",
+        "reagent_concentration_units": "concentration_units",
+        "reagent_supplier": "supplier",
+        "reagent_lot": "lot",
+        "reagent_storage_location": "storage_location",
+        "reagent_hazards": "hazards",
+        "reagent_notes": "notes",
+    }
+    for source, target in prefixed_fields.items():
+        if source in item and item.get(source) not in (None, "") and target not in reagent:
+            reagent[target] = item.get(source)
+    projected = project_sheet_row("Master Reagents", reagent)
+    if not str(projected.get("reagent_id", "")).strip():
+        return None
+    data_fields = [header for header in sheet_by_name("Master Reagents").headers if header != "reagent_id"]
+    if not any(str(projected.get(header, "")).strip() for header in data_fields):
+        return None
+    return projected
+
+
+def merge_master_reagent_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    order = []
+    for row in rows:
+        reagent_id = str(row.get("reagent_id", "")).strip()
+        if not reagent_id:
+            continue
+        if reagent_id not in merged:
+            merged[reagent_id] = dict(row)
+            order.append(reagent_id)
+            continue
+        for field, value in row.items():
+            if str(merged[reagent_id].get(field, "")).strip():
+                continue
+            if str(value).strip():
+                merged[reagent_id][field] = value
+    return [merged[reagent_id] for reagent_id in order]
+
+
+def reconcile_master_reagent_rows(
+    rows: list[dict[str, Any]],
+    tables: dict[str, list[dict[str, Any]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    existing_by_id = {
+        str(row.get("reagent_id", "")).strip(): (row_number, row)
+        for row_number, row in enumerate(tables.get("Master Reagents", []), start=2)
+        if isinstance(row, dict) and str(row.get("reagent_id", "")).strip()
+    }
+    append_rows = []
+    updates = []
+    warnings = []
+    for row in rows:
+        reagent_id = str(row.get("reagent_id", "")).strip()
+        if not reagent_id:
+            append_rows.append(row)
+            continue
+        if reagent_id not in existing_by_id:
+            append_rows.append(row)
+            continue
+        row_number, existing = existing_by_id[reagent_id]
+        for field, value in row.items():
+            if field == "reagent_id" or not str(value).strip():
+                continue
+            current = str(existing.get(field, "")).strip()
+            proposed = str(value).strip()
+            if not current:
+                updates.append(
+                    {
+                        "sheet": "Master Reagents",
+                        "row_number": row_number,
+                        "reagent_id": reagent_id,
+                        "key_field": "reagent_id",
+                        "key_value": reagent_id,
+                        "field": field,
+                        "value": value,
+                    }
+                )
+            elif current != proposed:
+                warnings.append(
+                    {
+                        "code": "master_reagent_field_conflict",
+                        "sheet": "Master Reagents",
+                        "reagent_id": reagent_id,
+                        "field": field,
+                        "existing_value": existing.get(field, ""),
+                        "proposed_value": value,
+                    }
+                )
+    return append_rows, updates, warnings
 
 
 def daily_log_row_from_record_item(

@@ -151,14 +151,23 @@ measurements, linked literature evidence, and open suggestions. Use
 `--stage planning` before a run and `--stage review` when the agent should make
 a result-driven follow-up suggestion.
 
-Use `record-experiment` to turn a structured run record into appendable
-`Experiments`, `Formulations`, `Daily Log`, and `Results` rows:
+Use `record-experiment` to turn a structured run record into notebook rows for
+`Experiments`, `Formulations`, `Daily Log`, and `Results`:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
   --record examples/emulsion_polymerization_record.json \
   --report-output artifacts/record-ep-010.json
 ```
+
+The record can also carry Master Reagents metadata through top-level
+`master_reagents` or `reagents`, a nested `formulation[].reagent` object, or
+unambiguous formulation fields such as `reagent_name`,
+`reagent_molecular_weight_g_mol`, `reagent_density_g_mL`, and
+`reagent_supplier`. When `--workbook` or `--snapshot` is supplied, existing
+`Master Reagents` rows are reconciled by `reagent_id`: blank cells are filled,
+new reagents are appended, and conflicting nonblank values are reported as
+warnings without overwriting the workbook value.
 
 Apply the generated rows to a workbook copy:
 
@@ -171,8 +180,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
   --report-output artifacts/record-ep-010-applied.json
 ```
 
-For a Google Sheets snapshot, include sheet IDs for `Experiments`,
-`Formulations`, `Daily Log`, and `Results`, then emit an audited batch:
+For a Google Sheets snapshot, include sheet IDs for `Master Reagents`,
+`Experiments`, `Formulations`, `Daily Log`, and `Results`, then emit an audited
+batch:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
