@@ -39,6 +39,7 @@ from .google_api import (
     run_live_google_agent,
     run_live_google_experiment_record,
     run_live_google_formulation_normalization,
+    run_live_google_material_scaffold,
     run_live_google_plan_materialization,
     run_live_google_recorded_daily_agent,
     run_live_google_setup,
@@ -554,6 +555,24 @@ def main(argv: list[str] | None = None) -> int:
     scaffold_materials_parser.add_argument("--workbook-output", help="Optional output .xlsx path for workbook apply mode. Defaults to in-place.")
     scaffold_materials_parser.add_argument("--report-output", help="Optional scaffold report JSON path. Defaults to stdout.")
     scaffold_materials_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path for snapshot mode.")
+
+    google_scaffold_materials_parser = subparsers.add_parser(
+        "google-scaffold-materials-live",
+        help="Capture a live Google Sheet, scaffold process-aware material rows, audit, and optionally apply.",
+    )
+    google_scaffold_materials_parser.add_argument("--spreadsheet-id", required=True)
+    google_scaffold_materials_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_scaffold_materials_parser.add_argument("--range", default="A1:Z1000")
+    google_scaffold_materials_parser.add_argument("--experiment-id", required=True)
+    google_scaffold_materials_parser.add_argument("--process-type", help="Process type to scaffold. Defaults to the Experiments row process type.")
+    google_scaffold_materials_parser.add_argument("--query", default="", help="Optional process/material search text to bias existing reagent selection.")
+    google_scaffold_materials_parser.add_argument("--include-optional", action="store_true", help="Include optional process roles such as crosslinker or chain-transfer agent.")
+    google_scaffold_materials_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_scaffold_materials_parser.add_argument("--run-output", help="Optional full live run JSON path. Defaults to stdout.")
+    google_scaffold_materials_parser.add_argument("--snapshot-output", help="Optional captured snapshot JSON path.")
+    google_scaffold_materials_parser.add_argument("--report-output", help="Optional material scaffold report JSON path.")
+    google_scaffold_materials_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
+    google_scaffold_materials_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
 
     google_materialize_parser = subparsers.add_parser(
         "google-materialize-live",
@@ -1256,6 +1275,28 @@ def main(argv: list[str] | None = None) -> int:
             audit_output=args.audit_output,
             batch_output=args.batch_output,
             report_key="daily_log_results_report",
+        )
+        return 0
+    if args.command == "google-scaffold-materials-live":
+        client = build_google_client(args.service_account_file)
+        run = run_live_google_material_scaffold(
+            args.spreadsheet_id,
+            client,
+            experiment_id=args.experiment_id,
+            process_type=args.process_type,
+            query=args.query,
+            include_optional=args.include_optional,
+            value_range=args.range,
+            apply=args.apply,
+        )
+        write_live_run_outputs(
+            run,
+            run_output=args.run_output,
+            snapshot_output=args.snapshot_output,
+            report_output=args.report_output,
+            audit_output=args.audit_output,
+            batch_output=args.batch_output,
+            report_key="material_scaffold_report",
         )
         return 0
     if args.command == "google-materialize-live":

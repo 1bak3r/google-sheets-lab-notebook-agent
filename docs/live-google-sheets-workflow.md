@@ -166,6 +166,20 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-normalize-daily-log-resu
   --batch-output artifacts/live-google-daily-log-batch.json
 ```
 
+Material scaffolding can also run directly against the live sheet when a new
+experiment needs starter `Master Reagents` and `Formulations` rows:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-scaffold-materials-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --experiment-id EP-002 \
+  --process-type "emulsion polymerization" \
+  --snapshot-output artifacts/live-google-material-scaffold-snapshot.json \
+  --report-output artifacts/live-google-material-scaffold.json \
+  --audit-output artifacts/live-google-material-scaffold-audit.json \
+  --batch-output artifacts/live-google-material-scaffold-batch.json
+```
+
 Add `--apply` only after checking that the audit is valid. The command uses
 Application Default Credentials unless `--service-account-file path/to/key.json`
 is provided. The service account or ADC principal must have edit access to the
@@ -475,6 +489,10 @@ Proceed only if `"valid": true`, then pass
 `artifacts/live-sheet-material-scaffold-batch.json` to the Google Sheets
 connector batch-update action. Replace generated placeholder reagent identities
 and physical properties before running the experiment.
+
+When direct Google API credentials are configured, `google-scaffold-materials-live`
+performs the same capture, audit, and optional apply flow without a separate
+snapshot file.
 
 ## 7. Run The Agent From The Snapshot
 

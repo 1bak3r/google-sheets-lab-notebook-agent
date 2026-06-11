@@ -532,6 +532,15 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-setup-live \
   --audit-output artifacts/live-google-setup-audit.json \
   --batch-output artifacts/live-google-setup-batch.json
 
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-scaffold-materials-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --experiment-id EP-002 \
+  --process-type "emulsion polymerization" \
+  --snapshot-output artifacts/live-google-material-scaffold-snapshot.json \
+  --report-output artifacts/live-google-material-scaffold.json \
+  --audit-output artifacts/live-google-material-scaffold-audit.json \
+  --batch-output artifacts/live-google-material-scaffold-batch.json
+
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-record-experiment-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --record examples/emulsion_polymerization_record.json \

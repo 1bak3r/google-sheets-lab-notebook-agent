@@ -52,6 +52,7 @@ from lab_notebook_agent.google_api import (
     run_live_google_agent,
     run_live_google_experiment_record,
     run_live_google_formulation_normalization,
+    run_live_google_material_scaffold,
     run_live_google_plan_materialization,
     run_live_google_recorded_daily_agent,
     run_live_google_setup,
@@ -2813,6 +2814,72 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(102, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(2, len(run["batch_update_requests"][0]["appendCells"]["rows"]))
             self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_material_scaffold_applies_valid_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {
+                        "Master Reagents": 100,
+                        "Formulations": 103,
+                    },
+                )
+            )
+            run = run_live_google_material_scaffold(
+                "spreadsheet-123",
+                client,
+                experiment_id="EP-002",
+                process_type="emulsion polymerization",
+                apply=True,
+            )
+            self.assertTrue(run["applied"])
+            self.assertEqual("lab-notebook-agent-live-google-material-scaffold.v1", run["schema"])
+            self.assertEqual("lab-notebook-agent-material-scaffold.v1", run["material_scaffold_report"]["schema"])
+            self.assertEqual(1, run["material_scaffold_report"]["summary"]["master_reagent_rows_to_append"])
+            self.assertEqual(4, run["material_scaffold_report"]["summary"]["formulation_rows_to_append"])
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(2, len(run["batch_update_requests"]))
+            self.assertEqual(100, run["batch_update_requests"][0]["appendCells"]["sheetId"])
+            self.assertEqual(103, run["batch_update_requests"][1]["appendCells"]["sheetId"])
+            self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_material_scaffold_cli_writes_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output = Path(tmpdir) / "material-scaffold-live.json"
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {
+                        "Master Reagents": 100,
+                        "Formulations": 103,
+                    },
+                )
+            )
+
+            with patch("lab_notebook_agent.google_api.GoogleSheetsApiClient.from_credentials", return_value=client):
+                exit_code = main(
+                    [
+                        "google-scaffold-materials-live",
+                        "--spreadsheet-id",
+                        "spreadsheet-123",
+                        "--experiment-id",
+                        "EP-002",
+                        "--process-type",
+                        "emulsion polymerization",
+                        "--apply",
+                        "--run-output",
+                        str(output),
+                    ]
+                )
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("lab-notebook-agent-live-google-material-scaffold.v1", report["schema"])
+            self.assertTrue(report["applied"])
+            self.assertEqual(4, report["material_scaffold_report"]["summary"]["formulation_rows_to_append"])
 
     def test_live_google_plan_materialization_applies_valid_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

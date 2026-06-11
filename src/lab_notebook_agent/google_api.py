@@ -22,6 +22,7 @@ from .google_sheets import (
     snapshot_to_tables,
     validate_snapshot,
 )
+from .material_scaffold import build_material_scaffold_report
 from .planning import build_plan_materialization_report
 from .recorded_daily_agent import build_snapshot_recorded_daily_agent_run
 from .schema import SHEETS
@@ -504,6 +505,54 @@ def run_live_google_daily_log_results_normalization(
         "snapshot": snapshot,
         "snapshot_audit": snapshot_audit,
         "daily_log_results_report": report,
+        "apply_audit": apply_audit,
+        "batch_update_requests": requests,
+        "batch_update_response": response,
+    }
+
+
+def run_live_google_material_scaffold(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    experiment_id: str,
+    process_type: str | None = None,
+    query: str = "",
+    include_optional: bool = False,
+    value_range: str = "A1:Z1000",
+    apply: bool = False,
+) -> dict[str, Any]:
+    snapshot = capture_snapshot_from_google_sheets(spreadsheet_id, client, value_range=value_range)
+    snapshot_audit = validate_snapshot(snapshot, require_sheet_ids=False)
+    if snapshot_audit["valid"]:
+        report = build_material_scaffold_report(
+            snapshot_to_tables(snapshot),
+            experiment_id=experiment_id,
+            process_type=process_type,
+            query=query,
+            include_optional=include_optional,
+        )
+    else:
+        report = {
+            "schema": "lab-notebook-agent-material-scaffold.v1",
+            "experiment_id": experiment_id,
+            "process_type": process_type or "",
+            "include_optional": include_optional,
+            "query": query,
+            "role_scaffold": [],
+            "append_master_reagents": [],
+            "append_formulations": [],
+            "summary": {},
+        }
+    apply_audit = audit_report_against_snapshot(report, snapshot, require_sheet_ids=True)
+    requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot)) if apply_audit["valid"] else []
+    response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}
+    return {
+        "schema": "lab-notebook-agent-live-google-material-scaffold.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "applied": bool(apply and requests),
+        "snapshot": snapshot,
+        "snapshot_audit": snapshot_audit,
+        "material_scaffold_report": report,
         "apply_audit": apply_audit,
         "batch_update_requests": requests,
         "batch_update_response": response,
