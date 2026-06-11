@@ -249,9 +249,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli experiment-preflight \
 ```
 
 The report checks required experiment fields, expected material roles,
-formulation quantities, Master Reagents physical properties, placeholder
-reagents, observations, Results rows, linked literature evidence, and open
-suggestions.
+formulation quantities, Master Reagents physical properties, Master Reagents
+hazards/SDS notes, placeholder reagents, observations, Results rows, linked
+literature evidence, and open suggestions. Missing reagent safety notes fail
+preflight when `Agent Config.safety_review_required` is true; setting it to
+false downgrades that check to a warning.
 
 Convert a structured experiment record JSON into appendable notebook rows when
 the operator has captured a run outside the sheet or in an intake form:

@@ -587,19 +587,7 @@ class ScaffoldTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
             tables = load_workbook_tables(workbook_path)
-            for row in tables["Master Reagents"]:
-                if row["reagent_id"] == "M-SKA":
-                    row["molecular_weight_g_mol"] = "156.18"
-                    row["density_g_mL"] = "1.05"
-                if row["reagent_id"] == "S-SDS":
-                    row["concentration"] = "active mass"
-            for row in tables["Formulations"]:
-                if row["reagent_id"] == "M-SKA":
-                    row["mass_g"] = "10"
-                if row["reagent_id"] == "I-APS":
-                    row["mass_g"] = "0.2"
-                if row["reagent_id"] == "S-SDS":
-                    row["mass_g"] = "0.1"
+            complete_template_materials(tables)
             report = build_experiment_preflight_report(tables, experiment_id="EP-001", stage="review")
             self.assertEqual("ready_with_warnings", report["status"])
             self.assertTrue(report["ready_to_run"])
@@ -608,6 +596,39 @@ class ScaffoldTests(unittest.TestCase):
             checks = {row["name"]: row for row in report["checks"]}
             self.assertEqual("warn", checks["literature_evidence"]["status"])
             self.assertEqual("pass", checks["reagent_properties"]["status"])
+            self.assertEqual("pass", checks["reagent_safety"]["status"])
+
+    def test_experiment_preflight_requires_reagent_safety_notes_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            complete_template_materials(tables)
+            for row in tables["Master Reagents"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["hazards"] = ""
+
+            report = build_experiment_preflight_report(tables, experiment_id="EP-001", stage="review")
+
+            checks = {row["name"]: row for row in report["checks"]}
+            self.assertEqual("fail", checks["reagent_safety"]["status"])
+            self.assertFalse(report["ready_to_run"])
+            self.assertIn("M-SKA", str(checks["reagent_safety"]["details"]))
+
+    def test_experiment_preflight_can_warn_on_safety_notes_when_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            tables = load_workbook_tables(workbook_path)
+            complete_template_materials(tables)
+            set_agent_config(tables, "safety_review_required", "false")
+            for row in tables["Master Reagents"]:
+                if row["reagent_id"] == "M-SKA":
+                    row["hazards"] = ""
+
+            report = build_experiment_preflight_report(tables, experiment_id="EP-001", stage="review")
+
+            checks = {row["name"]: row for row in report["checks"]}
+            self.assertEqual("warn", checks["reagent_safety"]["status"])
+            self.assertTrue(report["ready_to_run"])
 
     def test_formulation_calculation_derives_mass_and_moles_from_volume(self) -> None:
         calculation = calculate_formulation_row(
@@ -2338,6 +2359,22 @@ def set_agent_config(tables: dict[str, list[dict[str, object]]], key: str, value
             row["value"] = value
             return
     rows.append({"key": key, "value": value, "notes": ""})
+
+
+def complete_template_materials(tables: dict[str, list[dict[str, object]]]) -> None:
+    for row in tables["Master Reagents"]:
+        if row["reagent_id"] == "M-SKA":
+            row["molecular_weight_g_mol"] = "156.18"
+            row["density_g_mL"] = "1.05"
+        if row["reagent_id"] == "S-SDS":
+            row["concentration"] = "active mass"
+    for row in tables["Formulations"]:
+        if row["reagent_id"] == "M-SKA":
+            row["mass_g"] = "10"
+        if row["reagent_id"] == "I-APS":
+            row["mass_g"] = "0.2"
+        if row["reagent_id"] == "S-SDS":
+            row["mass_g"] = "0.1"
 
 
 def validations_by_range(worksheet: object) -> dict[str, str]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .agent import suggestions_for_experiment
+from .agent import agent_config_values, suggestions_for_experiment
 from .materials import audit_experiment_materials, nonblank
 from .sheets import build_experiment_entry_from_tables
 
@@ -36,6 +36,7 @@ def build_experiment_preflight_report(
         material_roles_check(material_audit),
         formulation_quantities_check(material_audit),
         reagent_properties_check(material_audit),
+        reagent_safety_check(entry, safety_review_required(tables)),
         placeholder_reagents_check(entry),
         observations_check(entry, stage),
         results_check(entry, stage),
@@ -125,6 +126,53 @@ def reagent_properties_check(material_audit: dict[str, Any]) -> dict[str, Any]:
         "pass",
         "Master Reagents has the physical-property fields needed for the current roles.",
     )
+
+
+def reagent_safety_check(entry: dict[str, Any], required: bool = True) -> dict[str, Any]:
+    gaps = []
+    for row in entry.get("formulation", []) or []:
+        if not isinstance(row, dict) or not str(row.get("reagent_id", "")).strip():
+            continue
+        if reagent_has_safety_notes(row):
+            continue
+        gaps.append(
+            {
+                "reagent_id": row.get("reagent_id", ""),
+                "target_role": row.get("target_role", ""),
+                "missing_fields": ["hazards"],
+            }
+        )
+    if gaps:
+        return check(
+            "reagent_safety",
+            "fail" if required else "warn",
+            "Master Reagents is missing hazards/SDS review notes for one or more formulation reagents.",
+            details={"reagent_safety_gaps": gaps, "safety_review_required": required},
+            actions=["Fill Master Reagents.hazards with SDS-reviewed handling notes before running or accepting the follow-up."],
+        )
+    return check(
+        "reagent_safety",
+        "pass",
+        "Master Reagents has hazards/SDS review notes for the formulation reagents.",
+        details={"safety_review_required": required},
+    )
+
+
+def reagent_has_safety_notes(row: dict[str, Any]) -> bool:
+    reagent = row.get("reagent") if isinstance(row.get("reagent"), dict) else {}
+    return any(
+        nonblank(value)
+        for value in (
+            row.get("hazards"),
+            row.get("reagent_hazards"),
+            reagent.get("hazards"),
+        )
+    )
+
+
+def safety_review_required(tables: dict[str, list[dict[str, Any]]]) -> bool:
+    raw_value = agent_config_values(tables).get("safety_review_required", "true")
+    return str(raw_value).strip().lower() not in {"false", "0", "no", "off"}
 
 
 def placeholder_reagents_check(entry: dict[str, Any]) -> dict[str, Any]:

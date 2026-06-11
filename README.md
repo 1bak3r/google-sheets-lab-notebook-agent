@@ -166,10 +166,13 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli experiment-preflight \
 
 The preflight report checks required `Experiments` fields, emulsion
 polymerization roles, formulation quantities, Master Reagents physical
-properties, generated placeholder reagents, Daily Log observations, Results
-measurements, linked literature evidence, and open suggestions. Use
-`--stage planning` before a run and `--stage review` when the agent should make
-a result-driven follow-up suggestion.
+properties, Master Reagents hazards/SDS notes, generated placeholder reagents,
+Daily Log observations, Results measurements, linked literature evidence, and
+open suggestions. Missing reagent safety notes fail preflight when
+`Agent Config.safety_review_required` is true; setting it to false downgrades
+that check to a warning. Use `--stage planning` before a run and
+`--stage review` when the agent should make a result-driven follow-up
+suggestion.
 
 Use `record-experiment` to turn a structured run record into notebook rows for
 `Experiments`, `Formulations`, `Daily Log`, and `Results`:
