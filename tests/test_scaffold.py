@@ -461,13 +461,40 @@ class ScaffoldTests(unittest.TestCase):
         entry["literature_evidence"] = [
             {
                 "evidence_id": "LIT-EP-001-001",
+                "title": "Surfactant control of emulsion polymer particle size",
                 "finding": "Surfactant package can affect particle size and colloidal stability.",
+                "relevance_tags": "surfactant,particle_size,stability",
+                "confidence": "medium",
             }
         ]
         suggestion = build_recommendation(entry)
         self.assertEqual(["LIT-EP-001-001"], suggestion["linked_evidence_ids"])
         self.assertIn("Literature Evidence rows", suggestion["rationale"])
+        self.assertIn("Linked literature tags emphasize", suggestion["rationale"])
+        self.assertIn("Literature guidance", suggestion["rationale"])
+        self.assertEqual(1, suggestion["literature_context"]["evidence_count"])
+        self.assertEqual(1, suggestion["literature_context"]["tag_counts"]["surfactant"])
+        self.assertIn("particle_size", suggestion["literature_context"]["relevance_tags"])
         self.assertEqual(["LIT-EP-001-001"], suggestion["proposed_experiment_plan"]["linked_evidence_ids"])
+        support = suggestion["proposed_experiment_plan"]["literature_support"]
+        self.assertEqual(["LIT-EP-001-001"], support["evidence_ids"])
+        self.assertTrue(support["guidance"])
+
+    def test_recommendation_infers_literature_tags_from_findings(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["literature_evidence"] = [
+            {
+                "evidence_id": "LIT-EP-001-002",
+                "title": "Semibatch monomer feed and latex nucleation",
+                "finding": "Feed profile changes affected particle size in acrylate latex experiments.",
+            }
+        ]
+        suggestion = build_recommendation(entry)
+        context = suggestion["literature_context"]
+        self.assertIn("feed", context["relevance_tags"])
+        self.assertIn("particle_size", context["relevance_tags"])
+        self.assertIn("feed/nucleation", " ".join(context["guidance"]))
+        self.assertEqual("LIT-EP-001-002", context["supporting_findings"][0]["evidence_id"])
 
     def test_structured_emulsion_plan_has_variables_and_capture_fields(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")

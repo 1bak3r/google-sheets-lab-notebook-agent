@@ -104,6 +104,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
 Each run records `litscout_status`. If the LitScout CLI is missing or returns a
 non-zero status, the report marks that experiment `skipped` with
 `skip_reason: litscout_failed` and does not append an ungrounded suggestion.
+When evidence rows are present, the recommendation also includes a
+`literature_context` block with evidence IDs, relevance tag counts, concise
+findings, and guidance inferred from tags or finding text.
 
 Run the same agent as a daily notebook review. This processes experiments whose
 `Experiments.date` or `Daily Log.timestamp` starts with the requested date, and
@@ -447,6 +450,8 @@ reviewable before execution:
 - objective, hypothesis, variables, controls, prerequisites, and acceptance
   criteria for the proposed follow-up.
 - linked `Literature Evidence` IDs used to support the draft.
+- `literature_support` with the evidence tags, guidance, and findings that
+  influenced the recommendation.
 - `sheet_rows` with draft `Experiments` values, copied/reviewable
   `Formulations` rows, and expected `Results` measurements to capture.
 

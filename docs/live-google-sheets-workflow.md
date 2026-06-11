@@ -364,6 +364,9 @@ The report records `litscout_status` for each experiment. If the LitScout CLI is
 missing or a search/export command fails, that experiment is marked `skipped`
 with `skip_reason: litscout_failed`, and no Literature Evidence or Agent
 Suggestions rows are emitted for it.
+When evidence is available, each suggestion includes `literature_context`, and
+the proposed plan includes `literature_support` so reviewers can see which tags
+and findings influenced the follow-up.
 
 ## 7. Audit Before Applying
 

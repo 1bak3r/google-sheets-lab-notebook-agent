@@ -26,21 +26,18 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
     material_audit = audit_experiment_materials(entry)
     experiment_id = str(entry.get("experiment_id", "unassigned"))
     process_type = str(entry.get("process_type", "")).lower()
+    literature = entry.get("literature_evidence", []) or []
+    literature_context = build_literature_context(literature)
+    linked_evidence_ids = literature_context["evidence_ids"]
 
     if "emulsion" in process_type and "polymer" in process_type:
-        proposal = emulsion_polymerization_next_experiment(entry, signals, matches)
+        proposal = emulsion_polymerization_next_experiment(entry, signals, matches, literature_context)
     else:
-        proposal = generic_next_experiment(entry, signals, matches)
+        proposal = generic_next_experiment(entry, signals, matches, literature_context)
 
     confidence = "medium" if matches and signals else "low"
     if "coagulum" in signals or "particle_size_high" in signals:
         confidence = "medium"
-    literature = entry.get("literature_evidence", []) or []
-    linked_evidence_ids = [
-        str(row.get("evidence_id"))
-        for row in literature
-        if isinstance(row, dict) and row.get("evidence_id")
-    ]
     rationale = proposal["rationale"]
     if material_audit["summary"]:
         rationale = f"{rationale} Material audit: {material_audit['summary']}"
@@ -49,12 +46,15 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
             f"{rationale} Literature Evidence rows {', '.join(linked_evidence_ids[:5])} "
             "are linked for human review before execution."
         )
+        if literature_context["summary"]:
+            rationale = f"{rationale} {literature_context['summary']}"
         confidence = "medium"
     proposed_plan = build_proposed_experiment_plan(
         entry,
         signals=signals,
         material_audit=material_audit,
         linked_evidence_ids=linked_evidence_ids,
+        literature_context=literature_context,
     )
 
     return {
@@ -74,6 +74,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         "status": "draft",
         "detected_signals": sorted(signals),
         "material_audit": material_audit,
+        "literature_context": literature_context,
         "proposed_experiment_plan": proposed_plan,
         "knowledge_matches": [
             {
@@ -147,10 +148,98 @@ def coerce_float(value: Any) -> float | None:
         return None
 
 
+def build_literature_context(literature: Any) -> dict[str, Any]:
+    rows = [row for row in literature or [] if isinstance(row, dict)]
+    tag_counts: dict[str, int] = {}
+    evidence_ids = []
+    supporting_findings = []
+    for row in rows:
+        evidence_id = str(row.get("evidence_id", "")).strip()
+        if evidence_id:
+            evidence_ids.append(evidence_id)
+        tags = literature_tags_for_row(row)
+        for tag in tags:
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        supporting_findings.append(
+            {
+                "evidence_id": evidence_id,
+                "title": short_text(row.get("title", ""), limit=140),
+                "finding": short_text(row.get("finding", ""), limit=240),
+                "relevance_tags": tags,
+                "confidence": row.get("confidence", ""),
+            }
+        )
+    ordered_tags = sorted(tag_counts, key=lambda tag: (-tag_counts[tag], tag))
+    return {
+        "evidence_count": len(rows),
+        "evidence_ids": evidence_ids,
+        "relevance_tags": ordered_tags,
+        "tag_counts": {tag: tag_counts[tag] for tag in ordered_tags},
+        "guidance": literature_guidance(ordered_tags),
+        "supporting_findings": supporting_findings[:5],
+        "summary": literature_context_summary(tag_counts),
+    }
+
+
+def literature_tags_for_row(row: dict[str, Any]) -> list[str]:
+    tags = {
+        tag.strip()
+        for tag in str(row.get("relevance_tags", "")).replace(";", ",").split(",")
+        if tag.strip()
+    }
+    if tags:
+        return sorted(tags)
+    text = " ".join(
+        str(row.get(field, ""))
+        for field in ("title", "finding", "query", "notes")
+    ).lower()
+    inferred = {
+        "surfactant": ("surfactant", "sds", "anionic", "nonionic", "ionic"),
+        "particle_size": ("particle size", "particles", "dls", "diameter", "nucleation"),
+        "stability": ("stability", "coagulum", "coagulation", "colloidal", "latex"),
+        "initiator": ("initiator", "persulfate", "radical", "aps"),
+        "monomer": ("monomer", "acrylate", "methacrylate"),
+        "feed": ("feed", "semibatch", "semi-batch", "starved"),
+    }
+    return sorted(tag for tag, terms in inferred.items() if any(term in text for term in terms))
+
+
+def literature_guidance(tags: list[str]) -> list[str]:
+    guidance = []
+    tag_set = set(tags)
+    if {"surfactant", "particle_size"} <= tag_set or {"surfactant", "stability"} <= tag_set:
+        guidance.append("Use linked evidence to prioritize surfactant active basis or surfactant package as a controlled factor.")
+    if "feed" in tag_set:
+        guidance.append("Keep monomer feed profile explicit because linked evidence points to feed/nucleation sensitivity.")
+    if "initiator" in tag_set:
+        guidance.append("Track initiator freshness, radical flux, and chase strategy as possible process-health factors.")
+    if "monomer" in tag_set:
+        guidance.append("Keep monomer identity fixed unless the literature review explicitly supports a chemistry change.")
+    return guidance
+
+
+def literature_context_summary(tag_counts: dict[str, int]) -> str:
+    if not tag_counts:
+        return ""
+    parts = [
+        f"{tag} ({count})"
+        for tag, count in sorted(tag_counts.items(), key=lambda item: (-item[1], item[0]))[:5]
+    ]
+    return "Linked literature tags emphasize " + ", ".join(parts) + "."
+
+
+def short_text(value: Any, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(limit - 3, 0)].rstrip() + "..."
+
+
 def emulsion_polymerization_next_experiment(
     entry: dict[str, Any],
     signals: set[str],
     matches: list[SearchResult],
+    literature_context: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     base = (
         "Run a controlled emulsion polymerization follow-up that keeps monomer "
@@ -191,6 +280,8 @@ def emulsion_polymerization_next_experiment(
         changes.append(
             "Use a small DOE with surfactant level and feed duration as the first two factors because these are actionable and measurable in the current sheet schema."
         )
+    for guidance in (literature_context or {}).get("guidance", [])[:2]:
+        rationale_bits.append(f"Literature guidance: {guidance}")
     material_audit = audit_experiment_materials(entry)
     if material_audit["missing_required_role_groups"] or material_audit["quantity_gaps"]:
         changes.append(
@@ -214,11 +305,13 @@ def generic_next_experiment(
     entry: dict[str, Any],
     signals: set[str],
     matches: list[SearchResult],
+    literature_context: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     objective = entry.get("objective", "the current objective")
     match_text = matches[0].record.get("summary") if matches else "No strong process match was found."
+    guidance = " ".join((literature_context or {}).get("guidance", [])[:1])
     return {
-        "rationale": f"Use the current result to isolate one variable related to {objective}. {match_text}",
+        "rationale": f"Use the current result to isolate one variable related to {objective}. {match_text} {guidance}".strip(),
         "proposed_change": (
             "Plan one follow-up experiment with a single intentional variable, "
             "hold all other formulation and process fields constant, and add "
@@ -233,10 +326,11 @@ def build_proposed_experiment_plan(
     signals: set[str],
     material_audit: dict[str, Any],
     linked_evidence_ids: list[str],
+    literature_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     process_type = str(entry.get("process_type", ""))
     if "emulsion" in process_type.lower() and "polymer" in process_type.lower():
-        return build_emulsion_polymerization_plan(entry, signals, material_audit, linked_evidence_ids)
+        return build_emulsion_polymerization_plan(entry, signals, material_audit, linked_evidence_ids, literature_context)
     experiment_id = str(entry.get("experiment_id", "unassigned"))
     return {
         "parent_experiment_id": experiment_id,
@@ -256,6 +350,7 @@ def build_proposed_experiment_plan(
         "acceptance_criteria": ["Result can be attributed to the selected variable."],
         "prerequisites": material_audit.get("recommendations", []),
         "linked_evidence_ids": linked_evidence_ids,
+        "literature_support": literature_plan_support(literature_context),
     }
 
 
@@ -264,6 +359,7 @@ def build_emulsion_polymerization_plan(
     signals: set[str],
     material_audit: dict[str, Any],
     linked_evidence_ids: list[str],
+    literature_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experiment_id = str(entry.get("experiment_id", "EP"))
     suggested_experiment_id = f"{experiment_id}-FUP-001"
@@ -345,6 +441,7 @@ def build_emulsion_polymerization_plan(
         ],
         "prerequisites": prerequisites,
         "linked_evidence_ids": linked_evidence_ids,
+        "literature_support": literature_plan_support(literature_context),
         "sheet_rows": {
             "experiments": [
                 {
@@ -369,6 +466,17 @@ def build_emulsion_polymerization_plan(
                 )
             ],
         },
+    }
+
+
+def literature_plan_support(literature_context: dict[str, Any] | None) -> dict[str, Any]:
+    context = literature_context or {}
+    return {
+        "evidence_count": context.get("evidence_count", 0),
+        "evidence_ids": context.get("evidence_ids", []),
+        "relevance_tags": context.get("relevance_tags", []),
+        "guidance": context.get("guidance", []),
+        "supporting_findings": context.get("supporting_findings", []),
     }
 
 
