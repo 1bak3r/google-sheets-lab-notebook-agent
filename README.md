@@ -671,11 +671,13 @@ For emulsion polymerization entries, the plan isolates particle-size,
 coagulum/stability, and conversion signals into controlled follow-up variables
 such as surfactant package, surfactant active basis, monomer feed duration, and
 initiator/process-health checks. Quantitative dosage changes stay gated by the
-available material data so blank quantities are not invented. When the source
-row has a numeric surfactant basis, high particle size proposes a modest
-surfactant-basis increase; otherwise the draft row slows monomer feed when feed
-duration is available and records review notes when only qualitative action is
-defensible.
+available material data so blank quantities are not invented. The follow-up
+objective, hypothesis, and acceptance criteria follow the detected signal, so a
+conversion-only run focuses on initiator/process health rather than surfactant
+package or coagulum. When the source row has a numeric surfactant basis, high
+particle size proposes a modest surfactant-basis increase; otherwise the draft
+row slows monomer feed when feed duration is available and records review notes
+when only qualitative action is defensible.
 
 After a human reviews a suggestion, set its `status` to `accepted` in
 `Agent Suggestions`. The materializer turns accepted suggestions into concrete

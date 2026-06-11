@@ -558,6 +558,9 @@ the proposed plan includes `literature_support` so reviewers can see which tags
 and findings influenced the follow-up.
 Each suggestion also includes `result_analysis`, and the proposed plan includes
 `result_support`, so target comparisons and limiting metrics are explicit.
+For emulsion polymerization, the proposed objective, hypothesis, variables, and
+acceptance criteria follow the detected particle-size, stability, or conversion
+signals instead of using one fixed follow-up template.
 Agent runs also include `historical_context`, and proposed plans include
 `history_support`, so same-process prior Results rows can be used as controls
 or benchmarks when reviewing the next experiment.

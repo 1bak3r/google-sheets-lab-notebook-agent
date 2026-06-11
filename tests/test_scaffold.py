@@ -1194,6 +1194,43 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("0.23", formulation_by_role["surfactant"]["mass_g"])
         self.assertEqual(180, formulation_by_role["core_monomer"]["feed_duration_min"])
 
+    def test_structured_emulsion_plan_focuses_low_conversion_on_process_health(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["objective"] = "Improve monomer conversion without changing latex chemistry."
+        entry["hypothesis"] = "Purge quality or initiator freshness limited conversion."
+        entry["observations"] = [
+            {
+                "timestamp": "2026-06-09T14:35:00",
+                "process_stage": "hold",
+                "temperature_C": 70,
+                "rpm": 250,
+                "observation": "Latex remained smooth through the thermal hold.",
+            }
+        ]
+        entry["results"] = [
+            {
+                "sample_id": "EP-001-L1",
+                "measurement_type": "conversion",
+                "value": 76,
+                "units": "%",
+                "quality_flag": "ok",
+                "interpretation": "Below target conversion.",
+            }
+        ]
+
+        suggestion = build_recommendation(entry)
+        plan = suggestion["proposed_experiment_plan"]
+
+        self.assertIn("process-health", suggestion["proposed_change"])
+        self.assertIn("low conversion", plan["objective"])
+        factors = [variable["factor"] for variable in plan["variables"]]
+        self.assertIn("initiator_process_health", factors)
+        self.assertNotIn("surfactant_package", factors)
+        self.assertIn("Conversion moves above", plan["acceptance_criteria"][0])
+        planned_experiment = plan["sheet_rows"]["experiments"][0]
+        self.assertIn("low conversion", planned_experiment["objective"])
+        self.assertNotIn("coagulum", planned_experiment["objective"].lower())
+
     def test_agent_report_appends_evidence_and_linked_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

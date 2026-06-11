@@ -269,11 +269,8 @@ def emulsion_polymerization_next_experiment(
     matches: list[SearchResult],
     literature_context: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    base = (
-        "Run a controlled emulsion polymerization follow-up that keeps monomer "
-        "identity, target solids, temperature, agitation, and total initiator "
-        "basis fixed while changing only the latex-stability variables."
-    )
+    focus = emulsion_followup_focus(signals)
+    base = focus["proposal_base"]
     changes = [
         "Create two or three conditions around the current formulation rather than changing every factor.",
         "Record surfactant identity, surfactant active mass, initiator feed, monomer feed rate, pH, temperature, solids, particle size, conversion, and coagulum mass.",
@@ -406,6 +403,7 @@ def build_emulsion_polymerization_plan(
 ) -> dict[str, Any]:
     experiment_id = str(entry.get("experiment_id", "EP"))
     suggested_experiment_id = str(entry.get("suggested_experiment_id", "")).strip() or f"{experiment_id}-FUP-001"
+    focus = emulsion_followup_focus(signals)
     variables = [
         {
             "factor": "baseline_repeat",
@@ -460,8 +458,8 @@ def build_emulsion_polymerization_plan(
         "parent_experiment_id": experiment_id,
         "suggested_experiment_id": suggested_experiment_id,
         "process_type": "emulsion polymerization",
-        "objective": "Isolate whether latex particle size and coagulum are controlled by surfactant package, feed profile, or process health.",
-        "hypothesis": "Holding monomer identity, target solids, temperature, agitation, and initiator basis fixed while changing latex-stability variables will lower particle size and reduce coagulum if colloidal stabilization/feed profile is limiting.",
+        "objective": focus["plan_objective"],
+        "hypothesis": focus["plan_hypothesis"],
         "variables": variables,
         "controls": [
             "Repeat the current formulation as a baseline if material quantities are complete.",
@@ -482,12 +480,7 @@ def build_emulsion_polymerization_plan(
             "viscosity_cP",
             "observation",
         ],
-        "acceptance_criteria": [
-            "Particle size moves toward the 200-350 nm target window.",
-            "Coagulum mass decreases relative to the baseline repeat.",
-            "Conversion remains high enough that stability changes are not confounded by incomplete polymerization.",
-            "No new safety or handling issue appears during feed, hold, or workup.",
-        ],
+        "acceptance_criteria": focus["acceptance_criteria"],
         "prerequisites": prerequisites,
         "result_support": result_plan_support(result_analysis),
         "linked_evidence_ids": linked_evidence_ids,
@@ -499,8 +492,8 @@ def build_emulsion_polymerization_plan(
                 {
                     "experiment_id": suggested_experiment_id,
                     "process_type": "emulsion polymerization",
-                    "objective": "Follow up latex particle size/coagulum by isolating surfactant package and feed profile.",
-                    "hypothesis": "Latex stability and particle size improve when surfactant/feed variables are isolated while core chemistry is held fixed.",
+                    "objective": focus["sheet_objective"],
+                    "hypothesis": focus["sheet_hypothesis"],
                     "linked_literature_ids": ",".join(linked_evidence_ids),
                     "status": "planned",
                 }
@@ -523,6 +516,106 @@ def build_emulsion_polymerization_plan(
                 )
             ],
         },
+    }
+
+
+def emulsion_followup_focus(signals: set[str]) -> dict[str, Any]:
+    has_particle = "particle_size_high" in signals
+    has_stability = "coagulum" in signals or "instability" in signals
+    has_conversion = "low_conversion" in signals
+    if has_conversion and not has_particle and not has_stability:
+        return {
+            "proposal_base": (
+                "Run a controlled emulsion polymerization follow-up that keeps "
+                "monomer identity, target solids, surfactant package, feed "
+                "profile, temperature, and agitation fixed while verifying "
+                "process-health variables that control conversion."
+            ),
+            "plan_objective": (
+                "Verify whether low conversion is driven by initiator freshness, "
+                "oxygen removal, thermal hold, or chase strategy while keeping "
+                "the latex formulation fixed."
+            ),
+            "plan_hypothesis": (
+                "Holding monomer, surfactant, and feed profile fixed while "
+                "verifying initiator and purge/temperature controls will raise "
+                "conversion if process health is limiting."
+            ),
+            "sheet_objective": "Follow up low conversion by isolating initiator/process-health controls.",
+            "sheet_hypothesis": (
+                "Conversion improves when initiator freshness, purge quality, "
+                "and thermal hold are verified while formulation is held fixed."
+            ),
+            "acceptance_criteria": [
+                "Conversion moves above the 85% first-pass target without changing monomer identity.",
+                "Particle size and coagulum do not regress relative to the baseline repeat.",
+                "Initiator lot/freshness, purge time, temperature profile, and hold/chase details are recorded.",
+                "No new safety or handling issue appears during feed, hold, or workup.",
+            ],
+        }
+    if has_conversion:
+        return {
+            "proposal_base": (
+                "Run a controlled emulsion polymerization follow-up that keeps "
+                "monomer identity, target solids, temperature, and agitation "
+                "fixed while separating latex-stability variables from "
+                "initiator/process-health variables."
+            ),
+            "plan_objective": (
+                "Isolate whether latex particle size, coagulum, and low "
+                "conversion are controlled by surfactant package, feed profile, "
+                "or process health."
+            ),
+            "plan_hypothesis": (
+                "Holding monomer identity, target solids, temperature, and "
+                "agitation fixed while separating surfactant/feed variables from "
+                "initiator controls will show whether stability or conversion is "
+                "the primary limitation."
+            ),
+            "sheet_objective": "Follow up latex stability and conversion by isolating surfactant/feed and process-health controls.",
+            "sheet_hypothesis": "Stability and conversion improve when surfactant/feed variables and initiator process health are isolated.",
+            "acceptance_criteria": [
+                "Particle size moves toward the 200-350 nm target window when particle size is limiting.",
+                "Coagulum mass decreases relative to the baseline repeat when stability is limiting.",
+                "Conversion moves above the 85% first-pass target so stability changes are interpretable.",
+                "No new safety or handling issue appears during feed, hold, or workup.",
+            ],
+        }
+    if has_particle or has_stability:
+        return {
+            "proposal_base": (
+                "Run a controlled emulsion polymerization follow-up that keeps "
+                "monomer identity, target solids, temperature, agitation, and "
+                "total initiator basis fixed while changing only the "
+                "latex-stability variables."
+            ),
+            "plan_objective": "Isolate whether latex particle size and coagulum are controlled by surfactant package, feed profile, or process health.",
+            "plan_hypothesis": "Holding monomer identity, target solids, temperature, agitation, and initiator basis fixed while changing latex-stability variables will lower particle size and reduce coagulum if colloidal stabilization/feed profile is limiting.",
+            "sheet_objective": "Follow up latex particle size/coagulum by isolating surfactant package and feed profile.",
+            "sheet_hypothesis": "Latex stability and particle size improve when surfactant/feed variables are isolated while core chemistry is held fixed.",
+            "acceptance_criteria": [
+                "Particle size moves toward the 200-350 nm target window.",
+                "Coagulum mass decreases relative to the baseline repeat.",
+                "Conversion remains high enough that stability changes are not confounded by incomplete polymerization.",
+                "No new safety or handling issue appears during feed, hold, or workup.",
+            ],
+        }
+    return {
+        "proposal_base": (
+            "Run a controlled emulsion polymerization follow-up that repeats the "
+            "current formulation as a baseline and changes only one surfactant, "
+            "feed, or process factor."
+        ),
+        "plan_objective": "Use the current emulsion polymerization run as a baseline and isolate one formulation or process variable.",
+        "plan_hypothesis": "A single controlled change around the baseline will make the next particle-size, stability, and conversion results interpretable.",
+        "sheet_objective": "Follow up the baseline by isolating one surfactant, feed, or process variable.",
+        "sheet_hypothesis": "One controlled change around the baseline will identify the next useful process direction.",
+        "acceptance_criteria": [
+            "Primary measurements are captured for particle size, conversion, solids, and coagulum.",
+            "The changed factor is the only intentional difference from the baseline repeat.",
+            "Result direction is clear enough to choose the next formulation or process variable.",
+            "No new safety or handling issue appears during feed, hold, or workup.",
+        ],
     }
 
 
