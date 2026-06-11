@@ -15,10 +15,12 @@ changing the core agent logic.
   - `Agent Suggestions`: `89758567`
   - `Experiments`: recapture from spreadsheet metadata before applying daily reviews or accepted plans
   - `Results`: recapture from spreadsheet metadata before applying accepted plans or daily normalized measurements
-  - `Daily Reviews`: recapture from spreadsheet metadata before applying daily review rows
+  - `Daily Reviews`: `900000000`
 
-The Google connector last returned `token_expired`; re-authenticate the Drive /
-Sheets connector before attempting fresh live reads or writes.
+The Google Drive connector successfully read and repaired the live sheet on
+2026-06-11. The direct local Google API path still requires Application Default
+Credentials or a service-account JSON file before `google-*-live` commands can
+run from this checkout.
 
 If the connector is unavailable, the local CLI can use the Google Sheets API
 directly with Application Default Credentials or a service account:
