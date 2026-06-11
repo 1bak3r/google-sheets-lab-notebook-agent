@@ -43,6 +43,10 @@ EMULSION_TARGETS: dict[str, dict[str, Any]] = {
 DAILY_LOG_METRIC_FIELDS: dict[str, tuple[str, str]] = {
     "particle_size_nm": ("DLS particle size", "nm"),
     "conversion_percent": ("conversion", "%"),
+    "residual_monomer_percent": ("residual monomer", "%"),
+    "polydispersity_index": ("polydispersity index", ""),
+    "Tg_C": ("Tg", "C"),
+    "hold_time_min": ("hold time", "min"),
     "solids_percent": ("solids percent", "%"),
     "viscosity_cP": ("viscosity", "cP"),
     "pH": ("pH", ""),

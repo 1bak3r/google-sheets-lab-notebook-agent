@@ -480,8 +480,10 @@ def build_emulsion_polymerization_plan(
         ],
         "measurements": [
             "particle_size_nm",
+            "polydispersity_index",
             "solids_percent",
             "conversion_percent",
+            "residual_monomer_percent",
             "coagulum_mass_g",
             "pH",
             "temperature_C",
@@ -516,8 +518,10 @@ def build_emulsion_polymerization_plan(
                 {"measurement_type": measurement, "units": suggested_units(measurement)}
                 for measurement in (
                     "particle_size_nm",
+                    "polydispersity_index",
                     "solids_percent",
                     "conversion_percent",
+                    "residual_monomer_percent",
                     "coagulum_mass_g",
                     "pH",
                     "viscosity_cP",
@@ -928,9 +932,13 @@ def followup_formulation_note(
 def suggested_units(measurement: str) -> str:
     return {
         "particle_size_nm": "nm",
+        "polydispersity_index": "",
         "solids_percent": "%",
         "conversion_percent": "%",
+        "residual_monomer_percent": "%",
         "coagulum_mass_g": "g",
         "pH": "",
         "viscosity_cP": "cP",
+        "Tg_C": "C",
+        "hold_time_min": "min",
     }.get(measurement, "")

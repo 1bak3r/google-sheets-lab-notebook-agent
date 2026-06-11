@@ -43,7 +43,7 @@ automation.
 - `Master Reagents`: canonical inventory and physical properties such as role,
   molecular weight, density, supplier, lot, hazards, and notes.
 - `Experiments`: one row per planned or completed experiment.
-- `Daily Log`: timestamped observations from the run.
+- `Daily Log`: timestamped observations and structured run/test measurements.
 - `Formulations`: reagent amounts, phases, roles, feed timing, and notes.
 - `Results`: measurements and interpretations.
 - `Literature Evidence`: rows exported or summarized from LitScout.
@@ -317,9 +317,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
 Use `normalize-daily-log-results` to turn structured Daily Log measurements and
 common free-text phrases into normalized `Results` rows. It recognizes entries
 such as temperature, rpm, pH, solids, particle size, conversion, viscosity, and
-coagulum mass, plus polymer outcome notes such as residual monomer, PDI, Tg,
-and hold time. Existing matching Results values are skipped so the operation can
-be rerun safely:
+coagulum mass, plus polymer outcome columns or notes such as residual monomer,
+PDI, Tg, and hold time. Existing matching Results values are skipped so the
+operation can be rerun safely:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \

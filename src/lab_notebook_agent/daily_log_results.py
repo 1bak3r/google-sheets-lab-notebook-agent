@@ -40,6 +40,26 @@ MEASUREMENT_FIELDS: dict[str, dict[str, str]] = {
         "units": "%",
         "method": "Daily Log structured field",
     },
+    "residual_monomer_percent": {
+        "measurement_type": "residual monomer",
+        "units": "%",
+        "method": "Daily Log structured field",
+    },
+    "polydispersity_index": {
+        "measurement_type": "polydispersity index",
+        "units": "",
+        "method": "Daily Log structured field",
+    },
+    "Tg_C": {
+        "measurement_type": "Tg",
+        "units": "C",
+        "method": "Daily Log structured field",
+    },
+    "hold_time_min": {
+        "measurement_type": "hold time",
+        "units": "min",
+        "method": "Daily Log structured field",
+    },
     "viscosity_cP": {
         "measurement_type": "viscosity",
         "units": "cP",

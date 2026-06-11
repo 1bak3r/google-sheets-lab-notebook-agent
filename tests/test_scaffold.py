@@ -263,6 +263,29 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("above_target", limiting["polydispersity_index"]["status"])
         self.assertIn("process-health", " ".join(analysis["guidance"]))
 
+    def test_result_analysis_uses_structured_daily_log_polymer_outcomes(self) -> None:
+        entry = {
+            "experiment_id": "EP-DL",
+            "process_type": "emulsion polymerization",
+            "observations": [
+                {
+                    "timestamp": "2026-06-09T18:30:00",
+                    "process_stage": "test",
+                    "residual_monomer_percent": "1.7",
+                    "polydispersity_index": "0.27",
+                }
+            ],
+            "results": [],
+        }
+
+        analysis = build_result_analysis(entry)
+
+        self.assertIn("residual_monomer_high", analysis["signals"])
+        self.assertIn("broad_psd", analysis["signals"])
+        limiting = {row["metric_key"]: row for row in analysis["limiting_metrics"]}
+        self.assertEqual("above_target", limiting["residual_monomer"]["status"])
+        self.assertEqual("above_target", limiting["polydispersity_index"]["status"])
+
     def test_rows_from_values_drops_blank_rows_and_preserves_headers(self) -> None:
         rows = rows_from_values(
             [
@@ -1300,6 +1323,8 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("surfactant_active_basis_or_feed_duration", factors)
         self.assertIn("surfactant_package", factors)
         self.assertIn("particle_size_nm", plan["measurements"])
+        self.assertIn("polydispersity_index", plan["measurements"])
+        self.assertIn("residual_monomer_percent", plan["measurements"])
         self.assertTrue(plan["prerequisites"])
         self.assertEqual("planned", plan["sheet_rows"]["experiments"][0]["status"])
         adjustments = plan["planned_formulation_adjustments"]
@@ -2235,6 +2260,34 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("C", by_type["Tg"]["units"])
         self.assertEqual("45", by_type["hold time"]["value"])
         self.assertEqual("min", by_type["hold time"]["units"])
+
+    def test_daily_log_results_normalizes_structured_polymer_outcomes(self) -> None:
+        report = build_daily_log_results_report(
+            {
+                "Daily Log": [
+                    {
+                        "experiment_id": "EP-STRUCT",
+                        "timestamp": "2026-06-09T19:00:00",
+                        "process_stage": "test",
+                        "residual_monomer_percent": "1.8",
+                        "polydispersity_index": "0.12",
+                        "Tg_C": "-18",
+                        "hold_time_min": "45",
+                    }
+                ],
+                "Results": [],
+            },
+            experiment_ids=("EP-STRUCT",),
+        )
+
+        rows = report["runs"][0]["append_results"]
+        by_type = {row["measurement_type"]: row for row in rows}
+        self.assertEqual(4, report["summary"]["result_rows_to_append"])
+        self.assertEqual("Daily Log structured field", by_type["residual monomer"]["method"])
+        self.assertEqual("1.8", by_type["residual monomer"]["value"])
+        self.assertEqual("0.12", by_type["polydispersity index"]["value"])
+        self.assertEqual("-18", by_type["Tg"]["value"])
+        self.assertEqual("45", by_type["hold time"]["value"])
 
     def test_daily_log_results_apply_writes_results_rows_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3226,7 +3279,7 @@ class ScaffoldTests(unittest.TestCase):
             self.assertTrue(run["applied"])
             self.assertEqual(1, run["materialization_report"]["summary"]["experiment_rows_to_append"])
             self.assertEqual(3, run["materialization_report"]["summary"]["formulation_rows_to_append"])
-            self.assertEqual(6, run["materialization_report"]["summary"]["result_rows_to_append"])
+            self.assertEqual(8, run["materialization_report"]["summary"]["result_rows_to_append"])
             self.assertEqual(101, run["batch_update_requests"][0]["appendCells"]["sheetId"])
             self.assertEqual(103, run["batch_update_requests"][1]["appendCells"]["sheetId"])
             self.assertEqual(102, run["batch_update_requests"][2]["appendCells"]["sheetId"])
@@ -3249,7 +3302,7 @@ class ScaffoldTests(unittest.TestCase):
             )
             self.assertEqual(1, report["summary"]["experiment_rows_to_append"])
             self.assertEqual(3, report["summary"]["formulation_rows_to_append"])
-            self.assertEqual(6, report["summary"]["result_rows_to_append"])
+            self.assertEqual(8, report["summary"]["result_rows_to_append"])
             self.assertEqual("EP-001-FUP-001", report["runs"][0]["append_experiments"][0]["experiment_id"])
 
             planned_path = Path(tmpdir) / "planned.xlsx"
