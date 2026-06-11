@@ -60,8 +60,10 @@ def daily_review_status(summary: dict[str, Any]) -> str:
         int(summary.get(key, 0) or 0)
         for key in (
             "normalized_result_rows_to_append",
+            "formulation_cells_to_update",
             "evidence_rows_to_append",
             "suggestion_rows_to_append",
+            "suggestion_rows_to_update",
         )
     )
     if pending_rows:
@@ -75,8 +77,10 @@ def daily_review_summary_text(summary: dict[str, Any]) -> str:
     return (
         f"{summary.get('experiment_count', 0)} experiments; "
         f"{summary.get('normalized_result_rows_to_append', 0)} normalized Results rows; "
+        f"{summary.get('formulation_cells_to_update', 0)} normalized Formulations cells; "
         f"{summary.get('evidence_rows_to_append', 0)} evidence rows; "
         f"{summary.get('suggestion_rows_to_append', 0)} suggestion rows; "
+        f"{summary.get('suggestion_rows_to_update', 0)} suggestion status updates; "
         f"{summary.get('preflight_fail_count', 0)} preflight failures."
     )
 
@@ -86,6 +90,8 @@ def daily_review_next_actions(run: dict[str, Any]) -> list[str]:
     summary = run.get("summary", {}) if isinstance(run.get("summary"), dict) else {}
     if int(summary.get("normalized_result_rows_to_append", 0) or 0):
         actions.append("Apply or review normalized Daily Log measurements in Results.")
+    if int(summary.get("formulation_cells_to_update", 0) or 0):
+        actions.append("Apply or review normalized Formulations quantities before relying on follow-up calculations.")
     if int(summary.get("evidence_rows_to_append", 0) or 0):
         actions.append("Review appended Literature Evidence rows before relying on them.")
     if int(summary.get("suggestion_rows_to_append", 0) or 0):

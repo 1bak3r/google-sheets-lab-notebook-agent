@@ -341,6 +341,10 @@ preflight checks, role-aware material search, literature evidence rows,
 suggestion rows, a compact `Daily Reviews` row, and `Experiments`
 status/next-step/summary updates from one command:
 
+The compact `Daily Reviews` row treats pending Formulations normalization as
+apply-ready work and lists it in the summary and next-actions JSON, even when no
+new Results or Suggestions are pending.
+
 Pending Results rows from Daily Log normalization and pending Formulations
 quantity cells from formulation normalization are projected into the in-memory
 review before suggestions are generated, so same-day measurements and derived

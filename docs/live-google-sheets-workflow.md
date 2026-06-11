@@ -459,7 +459,9 @@ The combined run's `experiment_reviews` block can replace separate
 `experiment-preflight` and `search-materials` calls when you want one daily
 review artifact for the sheet. The Daily Reviews next-actions JSON also carries
 the first result-limit guidance for experiments with out-of-target measurements.
-Its `daily_log_results_report` block can also replace the standalone
+The compact Daily Reviews row treats pending Formulations normalization as
+apply-ready work and lists it in the summary and next-actions JSON. Its
+`daily_log_results_report` block can also replace the standalone
 `normalize-daily-log-results` command, and its
 `formulation_normalization_report` block can replace a separate
 `normalize-formulations` pass when you want one audited batch for the day.

@@ -2248,6 +2248,36 @@ class ScaffoldTests(unittest.TestCase):
                 actions,
             )
 
+    def test_daily_review_row_counts_formulation_updates_as_apply_work(self) -> None:
+        review_row = daily_review_row_from_run(
+            {
+                "review_date": "2026-06-09",
+                "selection": {"selected_experiment_ids": ["EP-001"]},
+                "summary": {
+                    "experiment_count": 1,
+                    "observation_count": 0,
+                    "result_count": 0,
+                    "normalized_result_rows_to_append": 0,
+                    "formulation_cells_to_update": 2,
+                    "evidence_rows_to_append": 0,
+                    "suggestion_rows_to_append": 0,
+                    "suggestion_rows_to_update": 0,
+                    "preflight_fail_count": 0,
+                    "preflight_warn_count": 0,
+                },
+                "daily_summary": {"experiments": []},
+                "experiment_reviews": [],
+            }
+        )
+
+        actions = json.loads(review_row["next_actions_json"])
+        self.assertEqual("ready_to_apply", review_row["status"])
+        self.assertIn("2 normalized Formulations cells", review_row["summary"])
+        self.assertTrue(
+            any("normalized Formulations quantities" in action for action in actions),
+            actions,
+        )
+
     def test_snapshot_daily_agent_run_includes_audit_and_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
