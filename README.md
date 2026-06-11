@@ -59,7 +59,9 @@ automation.
 Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
-`default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
+`default_litscout_limit`. `default_evidence_limit` caps how many Literature
+Evidence rows are appended from LitScout and how many linked evidence rows are
+selected into each suggestion. `suggestion_confidence_floor` controls the minimum
 confidence required before a draft is appended. Use
 `--suggestion-confidence-floor low|medium|high` on agent commands to override it
 for one run. `require_literature_evidence` can force suggestions to be skipped
@@ -127,7 +129,9 @@ Existing reviewed evidence is reused before a new LitScout search/export. The
 agent recognizes rows whose `evidence_id` uses the generated
 `LIT-{experiment_id}-...` prefix, and it also follows IDs listed in
 `Experiments.linked_literature_ids`, so manual or curated evidence rows can
-support a recommendation without being renamed.
+support a recommendation without being renamed. If more evidence is linked than
+the evidence limit allows, the agent ranks rows by result-signal tags, query
+overlap, and confidence before building the suggestion.
 
 Each run records `litscout_status`. If the LitScout CLI is missing or returns a
 non-zero status, the report marks that experiment `skipped` with

@@ -11,11 +11,12 @@ from .litscout import (
     build_litscout_query,
     litscout_works_to_evidence_rows,
     load_litscout_export,
+    query_relevance_terms,
     slugify,
 )
 from .notebook_search import search_notebook_tables
-from .recommend import build_recommendation
-from .search import LocalSemanticIndex
+from .recommend import build_recommendation, entry_query, extract_signals
+from .search import LocalSemanticIndex, flatten_text
 from .sheets import (
     append_rows_to_workbook,
     build_experiment_entry_from_tables,
@@ -100,12 +101,19 @@ def build_agent_report(
         entry["suggested_experiment_id"] = next_followup_experiment_id(tables, experiment_id)
         entry["litscout_config"] = litscout_command_config(config)
         existing_evidence = evidence_for_experiment(tables, experiment_id)
+        selected_evidence: list[dict[str, Any]] = []
         new_evidence = []
         litscout_export_path = config.litscout_export
         litscout_status = litscout_not_requested_status()
 
         if existing_evidence:
-            entry["literature_evidence"] = existing_evidence
+            selected_evidence = select_literature_evidence_for_entry(
+                entry,
+                existing_evidence,
+                query=query,
+                limit=config.evidence_limit,
+            )
+            entry["literature_evidence"] = selected_evidence
             litscout_status = litscout_existing_evidence_status(existing_evidence, requested=config.run_litscout)
         else:
             candidate_works = works
@@ -138,7 +146,13 @@ def build_agent_report(
                     query=query,
                     limit=config.evidence_limit,
                 )
-                entry["literature_evidence"] = new_evidence
+                selected_evidence = select_literature_evidence_for_entry(
+                    entry,
+                    new_evidence,
+                    query=query,
+                    limit=config.evidence_limit,
+                )
+                entry["literature_evidence"] = selected_evidence
 
         evidence_rows_to_append = rows_not_present(
             new_evidence,
@@ -157,6 +171,7 @@ def build_agent_report(
                     "litscout_status": litscout_status,
                     "notebook_context_matches": notebook_matches,
                     "historical_context": historical_context,
+                    "selected_literature_evidence_ids": evidence_ids(selected_evidence),
                     "append_literature_evidence": evidence_rows_to_append,
                     "append_agent_suggestions": [],
                 }
@@ -180,6 +195,7 @@ def build_agent_report(
                     "litscout_status": litscout_status,
                     "notebook_context_matches": notebook_matches,
                     "historical_context": historical_context,
+                    "selected_literature_evidence_ids": evidence_ids(selected_evidence),
                     "append_literature_evidence": evidence_rows_to_append,
                     "append_agent_suggestions": [],
                 }
@@ -196,6 +212,7 @@ def build_agent_report(
                 "litscout_status": litscout_status,
                 "notebook_context_matches": notebook_matches,
                 "historical_context": historical_context,
+                "selected_literature_evidence_ids": evidence_ids(selected_evidence),
                 "append_literature_evidence": evidence_rows_to_append,
                 "append_agent_suggestions": [suggestion],
             }
@@ -582,6 +599,76 @@ def evidence_for_experiment(tables: dict[str, list[dict[str, Any]]], experiment_
             rows.append(row)
             seen.add(evidence_id)
     return rows
+
+
+def select_literature_evidence_for_entry(
+    entry: dict[str, Any],
+    evidence_rows: list[dict[str, Any]],
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    scored = [
+        (
+            evidence_relevance_score(row, entry, query),
+            -index,
+            row,
+        )
+        for index, row in enumerate(evidence_rows)
+        if isinstance(row, dict)
+    ]
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [row for _, _, row in scored[:limit]]
+
+
+def evidence_relevance_score(row: dict[str, Any], entry: dict[str, Any], query: str) -> float:
+    tags = evidence_tags(row)
+    signal_tags = evidence_signal_tags(entry)
+    query_terms = query_relevance_terms(" ".join([query, entry_query(entry)]))
+    row_terms = query_relevance_terms(flatten_text(row))
+    confidence = CONFIDENCE_RANK.get(normalized_confidence(row.get("confidence", "")), 0)
+    return (
+        8.0 * len(tags & signal_tags)
+        + 2.0 * len(query_terms & row_terms)
+        + 1.5 * confidence
+        + 0.25 * len(tags)
+    )
+
+
+def evidence_tags(row: dict[str, Any]) -> set[str]:
+    return {
+        tag.strip().lower()
+        for tag in str(row.get("relevance_tags", "")).replace(";", ",").split(",")
+        if tag.strip()
+    }
+
+
+def evidence_signal_tags(entry: dict[str, Any]) -> set[str]:
+    signals = extract_signals(entry)
+    tags: set[str] = set()
+    if "particle_size_high" in signals:
+        tags.add("particle_size")
+    if "coagulum" in signals or "instability" in signals:
+        tags.add("stability")
+    if "low_conversion" in signals:
+        tags.add("initiator")
+    text = entry_query(entry).lower()
+    if "surfactant" in text or "sds" in text:
+        tags.add("surfactant")
+    if "feed" in text:
+        tags.add("feed")
+    if "monomer" in text or "acrylate" in text:
+        tags.add("monomer")
+    return tags
+
+
+def evidence_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(row.get("evidence_id", "")).strip()
+        for row in rows
+        if str(row.get("evidence_id", "")).strip()
+    ]
 
 
 def literature_ids_linked_to_experiment(

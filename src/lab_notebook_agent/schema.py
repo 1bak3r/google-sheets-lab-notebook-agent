@@ -415,7 +415,7 @@ SHEETS: tuple[SheetSpec, ...] = (
         example_rows=(
             ("default_context_limit", "5", "Notebook search matches to include per agent run."),
             ("default_history_limit", "5", "Same-process prior experiments to include as result benchmarks."),
-            ("default_evidence_limit", "3", "LitScout evidence rows to append per experiment."),
+            ("default_evidence_limit", "3", "Literature Evidence rows to append or select per experiment."),
             ("default_litscout_sources", "openalex,crossref,semantic_scholar", "Sources used by generated LitScout commands."),
             ("default_litscout_depth", "light", "Increase to medium/intense when a search is promising."),
             ("default_litscout_limit", "8", "LitScout works to retrieve when the agent runs LitScout live."),

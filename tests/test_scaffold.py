@@ -1244,6 +1244,52 @@ class ScaffoldTests(unittest.TestCase):
                 suggestion["proposed_experiment_plan"]["literature_support"]["evidence_ids"],
             )
 
+    def test_agent_report_ranks_existing_literature_evidence_by_relevance_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            tables["Experiments"][0]["linked_literature_ids"] = "LIT-OFF-001,LIT-SURF-001,LIT-FEED-001"
+            tables["Literature Evidence"].extend(
+                [
+                    {
+                        "evidence_id": "LIT-OFF-001",
+                        "source": "manual",
+                        "title": "Pulmonary surfactant review",
+                        "finding": "Biomedical surfactant systems without polymer latex process guidance.",
+                        "relevance_tags": "",
+                        "confidence": "high",
+                    },
+                    {
+                        "evidence_id": "LIT-SURF-001",
+                        "source": "manual",
+                        "title": "Surfactant package control in emulsion polymerization",
+                        "finding": "Surfactant package controls latex particle size and coagulum.",
+                        "relevance_tags": "surfactant,particle_size,stability",
+                        "confidence": "medium",
+                    },
+                    {
+                        "evidence_id": "LIT-FEED-001",
+                        "source": "manual",
+                        "title": "Semi-batch feed and latex nucleation",
+                        "finding": "Monomer feed profile affects particle size in acrylate emulsion polymerization.",
+                        "relevance_tags": "feed,particle_size",
+                        "confidence": "medium",
+                    },
+                ]
+            )
+
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",), evidence_limit=2),
+            )
+
+            run = report["runs"][0]
+            suggestion = run["append_agent_suggestions"][0]
+            self.assertEqual("ready", run["status"])
+            self.assertEqual(["LIT-SURF-001", "LIT-FEED-001"], run["selected_literature_evidence_ids"])
+            self.assertEqual(["LIT-SURF-001", "LIT-FEED-001"], suggestion["linked_evidence_ids"])
+            self.assertEqual(2, suggestion["literature_context"]["evidence_count"])
+            self.assertNotIn("LIT-OFF-001", suggestion["linked_evidence_ids"])
+
     def test_agent_report_includes_prior_result_history_in_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))

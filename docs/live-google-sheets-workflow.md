@@ -508,7 +508,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run-snapshot \
 Agent runs read supported `Agent Config` defaults from the live snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
-`default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
+`default_litscout_limit`. `default_evidence_limit` caps how many Literature
+Evidence rows are appended from LitScout and how many linked evidence rows are
+selected into each suggestion. `suggestion_confidence_floor` controls the minimum
 confidence required before a draft is appended. Use
 `--suggestion-confidence-floor low|medium|high` on agent commands to override it
 for one run. `require_literature_evidence` can force suggestions to be skipped
@@ -530,7 +532,9 @@ Literature Evidence rows are available, the run is marked `skipped` with
 `skip_reason: literature_evidence_required`.
 Existing reviewed evidence is reused when a `Literature Evidence.evidence_id`
 uses the generated `LIT-{experiment_id}-...` prefix or when that evidence ID is
-listed in `Experiments.linked_literature_ids`.
+listed in `Experiments.linked_literature_ids`. If more evidence is linked than
+the evidence limit allows, the agent ranks rows by result-signal tags, query
+overlap, and confidence before building the suggestion.
 When evidence is available, each suggestion includes `literature_context`, and
 the proposed plan includes `literature_support` so reviewers can see which tags
 and findings influenced the follow-up.
