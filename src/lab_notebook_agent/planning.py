@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .material_scaffold import formulation_key
-from .materials import calculate_formulation_row, nonblank
+from .materials import calculate_formulation_row, nonblank, numeric_value
 from .sheets import append_rows_to_workbook, update_workbook_rows_by_key
 
 
@@ -253,6 +253,7 @@ def formulation_rows_from_plan(
         normalize_materialized_formulation_row(row, reagent_lookup or {})
         if row.get("reagent_id") and row.get("target_role"):
             rows.append(row)
+    normalize_materialized_formulation_wt_percent(rows)
     return rows
 
 
@@ -297,6 +298,33 @@ def normalize_materialized_formulation_row(
 def append_materialization_note(row: dict[str, Any], note: str) -> None:
     existing = str(row.get("notes", "")).strip()
     row["notes"] = f"{existing} {note}".strip() if existing else note
+
+
+def normalize_materialized_formulation_wt_percent(rows: list[dict[str, Any]]) -> None:
+    row_masses = []
+    masses_by_experiment: dict[str, list[float]] = {}
+    for row in rows:
+        mass_g = numeric_value(row.get("mass_g"))
+        experiment_id = str(row.get("experiment_id", "")).strip()
+        if mass_g is None or mass_g <= 0 or not experiment_id:
+            continue
+        row_masses.append((row, experiment_id, mass_g))
+        masses_by_experiment.setdefault(experiment_id, []).append(mass_g)
+
+    mass_totals = {
+        experiment_id: sum(values)
+        for experiment_id, values in masses_by_experiment.items()
+        if len(values) >= 2 and sum(values) > 0
+    }
+    for row, experiment_id, mass_g in row_masses:
+        total = mass_totals.get(experiment_id)
+        if total is None or nonblank(row.get("wt_percent")):
+            continue
+        row["wt_percent"] = format_materialized_value((mass_g / total) * 100)
+        append_materialization_note(
+            row,
+            "Derived wt_percent during materialization from planned formulation mass total. Verify before running.",
+        )
 
 
 def format_materialized_value(value: Any) -> str:

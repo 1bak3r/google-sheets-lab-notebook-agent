@@ -3167,6 +3167,81 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("0.25", formulation["moles_mmol"])
         self.assertIn("Derived missing quantity cells", formulation["notes"])
 
+    def test_accepted_suggestion_materialization_derives_wt_percent_from_mass_total(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {
+                    "reagent_id": "W-DI",
+                    "density_g_mL": "1.0",
+                }
+            ],
+            "Experiments": [],
+            "Formulations": [],
+            "Results": [],
+            "Agent Suggestions": [
+                {
+                    "suggestion_id": "SUG-WT",
+                    "experiment_id": "EP-001",
+                    "proposed_experiment_id": "EP-001-FUP-001",
+                    "status": "accepted",
+                    "proposed_plan_json": json.dumps(
+                        {
+                            "suggested_experiment_id": "EP-001-FUP-001",
+                            "process_type": "emulsion polymerization",
+                            "sheet_rows": {
+                                "experiments": [
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "process_type": "emulsion polymerization",
+                                    }
+                                ],
+                                "formulations": [
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "reagent_id": "M-SKA",
+                                        "phase": "monomer feed",
+                                        "target_role": "core_monomer",
+                                        "mass_g": "10",
+                                        "wt_percent": "",
+                                    },
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "reagent_id": "I-APS",
+                                        "phase": "initiator feed",
+                                        "target_role": "initiator",
+                                        "mass_g": "0.2",
+                                        "wt_percent": "",
+                                    },
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "reagent_id": "W-DI",
+                                        "phase": "aqueous",
+                                        "target_role": "solvent",
+                                        "volume_mL": "89.8",
+                                        "mass_g": "",
+                                        "wt_percent": "",
+                                    },
+                                ],
+                            },
+                        }
+                    ),
+                }
+            ],
+        }
+
+        report = build_plan_materialization_report(tables, planned_date="2026-06-10")
+
+        formulations = {
+            row["reagent_id"]: row
+            for row in report["runs"][0]["append_formulations"]
+        }
+        self.assertEqual("89.8", formulations["W-DI"]["mass_g"])
+        self.assertEqual("10", formulations["M-SKA"]["wt_percent"])
+        self.assertEqual("0.2", formulations["I-APS"]["wt_percent"])
+        self.assertEqual("89.8", formulations["W-DI"]["wt_percent"])
+        self.assertIn("Derived wt_percent", formulations["M-SKA"]["notes"])
+        self.assertIn("Derived wt_percent", formulations["W-DI"]["notes"])
+
     def test_accepted_suggestion_materialization_emits_google_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
