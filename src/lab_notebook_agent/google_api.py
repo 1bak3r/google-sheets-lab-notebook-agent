@@ -12,6 +12,9 @@ from .formulation_normalization import build_formulation_normalization_report
 from .google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
+    google_setup_audit_from_metadata,
+    google_setup_requests_from_metadata,
+    sheet_ids_from_metadata_payload,
     sheet_ids_from_snapshot,
     snapshot_to_tables,
     validate_snapshot,
@@ -152,6 +155,36 @@ def capture_snapshot_from_google_sheets(
         "schema": "lab-notebook-agent-google-sheets-snapshot.v1",
         "spreadsheet_id": spreadsheet_id,
         "sheets": sheets,
+    }
+
+
+def run_live_google_setup(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    apply: bool = False,
+    include_validations: bool = True,
+    validation_end_row: int = 1000,
+) -> dict[str, Any]:
+    metadata = client.get_metadata(spreadsheet_id)
+    setup_audit = google_setup_audit_from_metadata(
+        metadata,
+        include_validations=include_validations,
+        validation_end_row=validation_end_row,
+    )
+    requests = google_setup_requests_from_metadata(
+        metadata,
+        include_validations=include_validations,
+        validation_end_row=validation_end_row,
+    )
+    response = client.batch_update(spreadsheet_id, requests) if apply and requests else {}
+    return {
+        "schema": "lab-notebook-agent-live-google-setup.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "applied": bool(apply and requests),
+        "metadata": metadata,
+        "setup_audit": setup_audit,
+        "batch_update_requests": requests,
+        "batch_update_response": response,
     }
 
 
@@ -403,18 +436,7 @@ def google_api_doctor(
 
 
 def sheet_ids_from_metadata(metadata: dict[str, Any]) -> dict[str, int]:
-    ids: dict[str, int] = {}
-    for sheet in metadata.get("sheets", []) or []:
-        if not isinstance(sheet, dict):
-            continue
-        properties = sheet.get("properties", {})
-        if not isinstance(properties, dict):
-            continue
-        title = properties.get("title")
-        sheet_id = properties.get("sheetId")
-        if title is not None and sheet_id is not None:
-            ids[str(title)] = int(sheet_id)
-    return ids
+    return sheet_ids_from_metadata_payload(metadata)
 
 
 def quote_sheet_name(sheet_name: str) -> str:

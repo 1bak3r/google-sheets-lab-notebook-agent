@@ -383,6 +383,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-doctor \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --output artifacts/google-doctor.json
 
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-setup-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --audit-output artifacts/live-google-setup-audit.json \
+  --batch-output artifacts/live-google-setup-batch.json
+
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --litscout-export artifacts/litscout-ep-001.json \

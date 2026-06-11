@@ -29,6 +29,8 @@ from lab_notebook_agent.formulation_normalization import (
 from lab_notebook_agent.google_sheets import (
     audit_report_against_snapshot,
     batch_update_requests_from_report,
+    google_setup_audit_from_metadata,
+    google_setup_requests_from_metadata,
     sheet_ids_from_snapshot,
     snapshot_capture_plan,
     snapshot_from_tables,
@@ -43,6 +45,7 @@ from lab_notebook_agent.google_api import (
     run_live_google_agent,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
+    run_live_google_setup,
 )
 from lab_notebook_agent.cli import main, parse_sheet_id_args
 from lab_notebook_agent.litscout import evidence_rows_to_values, litscout_works_to_evidence_rows
@@ -1040,6 +1043,71 @@ class ScaffoldTests(unittest.TestCase):
             apply_sheets,
         )
 
+    def test_google_setup_requests_create_tabs_headers_and_validations(self) -> None:
+        metadata = {
+            "spreadsheetId": "spreadsheet-123",
+            "sheets": [
+                {
+                    "properties": {
+                        "title": "Experiments",
+                        "sheetId": 101,
+                        "gridProperties": {"rowCount": 100, "columnCount": 3},
+                    }
+                },
+                {"properties": {"title": "Notes", "sheetId": 999}},
+            ],
+        }
+        requests = google_setup_requests_from_metadata(metadata)
+        added_titles = [
+            request["addSheet"]["properties"]["title"]
+            for request in requests
+            if "addSheet" in request
+        ]
+        self.assertIn("Master Reagents", added_titles)
+        self.assertNotIn("Experiments", added_titles)
+
+        experiment_header_request = next(
+            request["updateCells"]
+            for request in requests
+            if request.get("updateCells", {}).get("start", {}).get("sheetId") == 101
+            and request["updateCells"]["start"].get("rowIndex") == 0
+        )
+        self.assertEqual(
+            "experiment_id",
+            experiment_header_request["rows"][0]["values"][0]["userEnteredValue"]["stringValue"],
+        )
+        experiment_grid_request = next(
+            request["updateSheetProperties"]
+            for request in requests
+            if request.get("updateSheetProperties", {}).get("properties", {}).get("sheetId") == 101
+        )
+        self.assertEqual(
+            1000,
+            experiment_grid_request["properties"]["gridProperties"]["rowCount"],
+        )
+        experiment_validations = [
+            request["setDataValidation"]
+            for request in requests
+            if request.get("setDataValidation", {}).get("range", {}).get("sheetId") == 101
+        ]
+        self.assertTrue(
+            any(
+                validation["range"]["startColumnIndex"] == 3
+                and any(
+                    value["userEnteredValue"] == "emulsion polymerization"
+                    for value in validation["rule"]["condition"]["values"]
+                )
+                for validation in experiment_validations
+            ),
+            experiment_validations,
+        )
+
+        audit = google_setup_audit_from_metadata(metadata)
+        self.assertEqual(["Notes"], audit["unknown_sheets"])
+        self.assertEqual(1, audit["summary"]["existing_contract_sheet_count"])
+        self.assertEqual(len(requests), audit["summary"]["request_count"])
+        self.assertEqual(900000000, audit["generated_sheet_ids"]["Master Reagents"])
+
     def test_validate_snapshot_detects_header_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
@@ -1127,6 +1195,22 @@ class ScaffoldTests(unittest.TestCase):
         self.assertFalse(result["ready"])
         self.assertEqual("failed", result["checks"][0]["status"])
         self.assertIn("credentials missing", result["checks"][0]["message"])
+
+    def test_live_google_setup_applies_setup_batch_with_fake_client(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx")),
+                    {sheet.name: index for index, sheet in enumerate(SHEETS, start=100)},
+                )
+            )
+            run = run_live_google_setup("spreadsheet-123", client, apply=True)
+            self.assertTrue(run["applied"])
+            self.assertEqual("lab-notebook-agent-live-google-setup.v1", run["schema"])
+            self.assertEqual(len(run["batch_update_requests"]), run["setup_audit"]["summary"]["request_count"])
+            self.assertEqual(1, len(client.batch_updates))
+            self.assertFalse(any("addSheet" in request for request in run["batch_update_requests"]))
+            self.assertTrue(any("setDataValidation" in request for request in run["batch_update_requests"]))
 
     def test_live_google_agent_run_applies_valid_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

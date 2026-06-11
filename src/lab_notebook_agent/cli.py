@@ -33,6 +33,7 @@ from .google_api import (
     run_live_google_agent,
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
+    run_live_google_setup,
 )
 from .litscout import evidence_rows_to_values, litscout_works_to_evidence_rows, load_litscout_export
 from .material_scaffold import apply_material_scaffold_report_to_workbook, build_material_scaffold_report
@@ -266,6 +267,20 @@ def main(argv: list[str] | None = None) -> int:
     google_doctor_parser.add_argument("--spreadsheet-id", help="Optional spreadsheet ID to verify metadata/contract access.")
     google_doctor_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
     google_doctor_parser.add_argument("--output", help="Optional output JSON path. Defaults to stdout.")
+
+    google_setup_parser = subparsers.add_parser(
+        "google-setup-live",
+        help="Create or repair live Google Sheet tabs, headers, frozen rows, and dropdowns from the workbook contract.",
+    )
+    google_setup_parser.add_argument("--spreadsheet-id", required=True)
+    google_setup_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_setup_parser.add_argument("--no-validations", action="store_true", help="Do not add controlled-vocabulary dropdown validation rules.")
+    google_setup_parser.add_argument("--validation-end-row", type=int, default=1000, help="Apply dropdown validations through this 1-based row number.")
+    google_setup_parser.add_argument("--apply", action="store_true", help="Apply the setup batchUpdate requests to the live spreadsheet.")
+    google_setup_parser.add_argument("--run-output", help="Optional full live setup run JSON path. Defaults to stdout.")
+    google_setup_parser.add_argument("--metadata-output", help="Optional spreadsheet metadata JSON path.")
+    google_setup_parser.add_argument("--audit-output", help="Optional setup audit JSON path.")
+    google_setup_parser.add_argument("--batch-output", help="Optional setup batchUpdate requests JSON path.")
 
     google_agent_parser = subparsers.add_parser("google-agent-run-live", help="Capture, run, audit, and optionally apply the lab notebook agent against a live Google Sheet.")
     google_agent_parser.add_argument("--spreadsheet-id", required=True)
@@ -725,6 +740,26 @@ def main(argv: list[str] | None = None) -> int:
             ),
             args.output,
         )
+        return 0
+    if args.command == "google-setup-live":
+        client = build_google_client(args.service_account_file)
+        run = run_live_google_setup(
+            args.spreadsheet_id,
+            client,
+            apply=args.apply,
+            include_validations=not args.no_validations,
+            validation_end_row=args.validation_end_row,
+        )
+        if args.metadata_output:
+            write_or_print_json(run.get("metadata", {}), args.metadata_output)
+        if args.audit_output:
+            write_or_print_json(run.get("setup_audit", {}), args.audit_output)
+        if args.batch_output:
+            write_or_print_json(run.get("batch_update_requests", []), args.batch_output)
+        if args.run_output:
+            write_or_print_json(run, args.run_output)
+        elif not any([args.metadata_output, args.audit_output, args.batch_output]):
+            print_json(run)
         return 0
     if args.command == "materialize-accepted-plans":
         if args.workbook:

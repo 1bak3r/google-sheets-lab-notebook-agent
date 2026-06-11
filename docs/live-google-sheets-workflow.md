@@ -33,7 +33,31 @@ environment is not available, use an ignored local dependency directory:
 python3 -m pip install --target .python-deps/google google-auth requests
 ```
 
-## 1. Generate The Capture Plan
+## 1. Setup Or Repair Contract Tabs
+
+Use the direct Google API setup command before snapshot capture when the live
+spreadsheet may be blank, partially imported, or missing dropdowns. The setup
+batch creates missing contract tabs, writes header rows, freezes row 1, formats
+headers, autosizes columns, and adds controlled-vocabulary dropdowns through row
+1000. It does not seed example data into a live sheet.
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-doctor \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --output artifacts/google-doctor.json
+
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-setup-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --audit-output artifacts/google-setup-audit.json \
+  --batch-output artifacts/google-setup-batch.json \
+  --run-output artifacts/google-setup-run.json
+```
+
+Review the audit and batch first. Add `--apply` to the same
+`google-setup-live` command only after confirming the Google credentials have
+edit access to the spreadsheet.
+
+## 2. Generate The Capture Plan
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-capture-plan \
@@ -52,6 +76,11 @@ Capture, run, audit, and emit batch requests directly:
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-doctor \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
   --output artifacts/google-doctor.json
+
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-setup-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --audit-output artifacts/live-google-setup-audit.json \
+  --batch-output artifacts/live-google-setup-batch.json
 
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-agent-run-live \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
@@ -122,7 +151,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-materialize-live \
   --batch-output artifacts/live-google-plan-batch.json
 ```
 
-## 2. Capture A Snapshot
+## 3. Capture A Snapshot
 
 For each plan entry, read the tab range through the connector using:
 
@@ -154,7 +183,7 @@ formulation quantity cells. `Experiments`, `Formulations`, and `Results` need
 IDs when materializing accepted suggestions into planned follow-up rows, and
 `Results` needs an ID when appending normalized Daily Log measurements.
 
-## 3. Validate The Snapshot
+## 4. Validate The Snapshot
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
@@ -164,7 +193,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
 
 Fix any missing tabs or header mismatches before running the agent.
 
-## 4. Summarize The Day
+## 5. Summarize The Day
 
 Search material roles before scaffolding or reviewing a run when you need to see
 which `Master Reagents` rows match the process:
@@ -307,7 +336,7 @@ review artifact for the sheet. Its `daily_log_results_report` block can also
 replace the standalone `normalize-daily-log-results` command when you want one
 audited batch for the day.
 
-## 5. Scaffold Starter Materials
+## 6. Scaffold Starter Materials
 
 For a new emulsion-polymerization experiment, generate starter rows for expected
 material roles before the run is recorded:
@@ -336,7 +365,7 @@ Proceed only if `"valid": true`, then pass
 connector batch-update action. Replace generated placeholder reagent identities
 and physical properties before running the experiment.
 
-## 6. Run The Agent From The Snapshot
+## 7. Run The Agent From The Snapshot
 
 Use an existing LitScout export:
 
@@ -376,7 +405,7 @@ Agent runs also include `historical_context`, and proposed plans include
 `history_support`, so same-process prior Results rows can be used as controls
 or benchmarks when reviewing the next experiment.
 
-## 7. Audit Before Applying
+## 8. Audit Before Applying
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
@@ -389,7 +418,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli validate-snapshot \
 Proceed only if `"valid": true`. A report with zero rows to append is a safe
 no-op.
 
-## 8. Apply Through Google Sheets
+## 9. Apply Through Google Sheets
 
 Pass `artifacts/live-sheet-batch-update.json` as the `requests` array to the
 Google Sheets connector batch-update action for the live spreadsheet.
@@ -407,7 +436,7 @@ second-run result is:
 }
 ```
 
-## 9. Materialize Accepted Plans
+## 10. Materialize Accepted Plans
 
 After a human reviews an `Agent Suggestions` row and changes `status` to
 `accepted`, recapture the sheet snapshot. Then generate planned `Experiments`,

@@ -103,6 +103,16 @@ DAILY_REVIEW_STATUS = (
     "no_action",
 )
 
+CONTROLLED_VOCAB_VALIDATIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    "Master Reagents": {"category": REAGENT_CATEGORIES},
+    "Experiments": {"process_type": PROCESS_TYPES, "status": EXPERIMENT_STATUS},
+    "Daily Log": {"process_stage": PROCESS_STAGES},
+    "Formulations": {"target_role": FORMULATION_ROLES},
+    "Results": {"quality_flag": RESULT_QUALITY_FLAGS},
+    "Agent Suggestions": {"status": SUGGESTION_STATUS},
+    "Daily Reviews": {"status": DAILY_REVIEW_STATUS},
+}
+
 SHEETS: tuple[SheetSpec, ...] = (
     SheetSpec(
         name="Master Reagents",

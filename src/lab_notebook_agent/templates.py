@@ -5,18 +5,12 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .schema import (
-    DAILY_REVIEW_STATUS,
-    EXPERIMENT_STATUS,
-    FORMULATION_ROLES,
-    PROCESS_STAGES,
-    PROCESS_TYPES,
-    REAGENT_CATEGORIES,
-    RESULT_QUALITY_FLAGS,
+    CONTROLLED_VOCAB_VALIDATIONS,
     SHEETS,
-    SUGGESTION_STATUS,
 )
 
 
@@ -70,18 +64,11 @@ def save_workbook(path: str | Path, include_examples: bool = True) -> Path:
 
 
 def add_validations(workbook: Workbook) -> None:
-    validations = {
-        "Master Reagents": {"D": REAGENT_CATEGORIES},
-        "Experiments": {"D": PROCESS_TYPES, "I": EXPERIMENT_STATUS},
-        "Daily Log": {"C": PROCESS_STAGES},
-        "Formulations": {"D": FORMULATION_ROLES},
-        "Results": {"I": RESULT_QUALITY_FLAGS},
-        "Agent Suggestions": {"M": SUGGESTION_STATUS},
-        "Daily Reviews": {"N": DAILY_REVIEW_STATUS},
-    }
-    for sheet_name, columns in validations.items():
+    for sheet_name, fields in CONTROLLED_VOCAB_VALIDATIONS.items():
         worksheet = workbook[sheet_name]
-        for column_letter, allowed_values in columns.items():
+        headers = [cell.value for cell in worksheet[1]]
+        for field, allowed_values in fields.items():
+            column_letter = get_column_letter(headers.index(field) + 1)
             formula = '"' + ",".join(allowed_values) + '"'
             validation = DataValidation(type="list", formula1=formula, allow_blank=True)
             validation.error = "Choose a value from the controlled vocabulary."

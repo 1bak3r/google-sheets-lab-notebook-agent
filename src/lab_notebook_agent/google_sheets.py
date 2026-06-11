@@ -7,8 +7,11 @@ from typing import Any
 from .agent import suggestion_to_workbook_row
 from .material_scaffold import formulation_key
 from .planning import result_row_key
-from .schema import SHEETS, sheet_by_name
+from .schema import CONTROLLED_VOCAB_VALIDATIONS, SHEETS, sheet_by_name
 from .sheets import rows_from_values
+
+GENERATED_SHEET_ID_START = 900_000_000
+DEFAULT_VALIDATION_END_ROW = 1000
 
 
 def load_agent_report(path: str | Path) -> dict[str, Any]:
@@ -47,6 +50,35 @@ def sheet_ids_from_snapshot(snapshot: dict[str, Any]) -> dict[str, int]:
         if isinstance(payload, dict) and payload.get("sheet_id") is not None:
             ids[str(sheet_name)] = int(payload["sheet_id"])
     return ids
+
+
+def sheet_ids_from_metadata_payload(metadata: dict[str, Any]) -> dict[str, int]:
+    ids: dict[str, int] = {}
+    for sheet in metadata.get("sheets", []) or []:
+        if not isinstance(sheet, dict):
+            continue
+        properties = sheet.get("properties", {})
+        if not isinstance(properties, dict):
+            continue
+        title = properties.get("title")
+        sheet_id = properties.get("sheetId")
+        if title is not None and sheet_id is not None:
+            ids[str(title)] = int(sheet_id)
+    return ids
+
+
+def sheet_properties_from_metadata_payload(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    properties_by_title: dict[str, dict[str, Any]] = {}
+    for sheet in metadata.get("sheets", []) or []:
+        if not isinstance(sheet, dict):
+            continue
+        properties = sheet.get("properties", {})
+        if not isinstance(properties, dict):
+            continue
+        title = properties.get("title")
+        if title is not None:
+            properties_by_title[str(title)] = properties
+    return properties_by_title
 
 
 def sheet_values(payload: Any) -> list[list[Any]]:
@@ -105,6 +137,264 @@ def snapshot_capture_plan(
             for spec in SHEETS
         ],
     }
+
+
+def google_setup_audit_from_metadata(
+    metadata: dict[str, Any],
+    include_validations: bool = True,
+    validation_end_row: int = DEFAULT_VALIDATION_END_ROW,
+) -> dict[str, Any]:
+    existing_sheet_ids = sheet_ids_from_metadata_payload(metadata)
+    generated_sheet_ids = generated_sheet_ids_for_missing(existing_sheet_ids)
+    requests = google_setup_requests_from_metadata(
+        metadata,
+        include_validations=include_validations,
+        validation_end_row=validation_end_row,
+    )
+    contract_sheet_names = {spec.name for spec in SHEETS}
+    existing_contract_sheets = [spec.name for spec in SHEETS if spec.name in existing_sheet_ids]
+    missing_sheets = [spec.name for spec in SHEETS if spec.name not in existing_sheet_ids]
+    unknown_sheets = sorted(set(existing_sheet_ids) - contract_sheet_names)
+    validation_rule_count = (
+        sum(len(fields) for fields in CONTROLLED_VOCAB_VALIDATIONS.values()) if include_validations else 0
+    )
+    return {
+        "schema": "lab-notebook-agent-google-setup-audit.v1",
+        "ready_after_apply": True,
+        "existing_contract_sheets": existing_contract_sheets,
+        "missing_sheets_to_create": missing_sheets,
+        "unknown_sheets": unknown_sheets,
+        "generated_sheet_ids": generated_sheet_ids,
+        "summary": {
+            "contract_sheet_count": len(SHEETS),
+            "existing_contract_sheet_count": len(existing_contract_sheets),
+            "missing_sheet_count": len(missing_sheets),
+            "validation_rule_count": validation_rule_count,
+            "request_count": len(requests),
+        },
+    }
+
+
+def google_setup_requests_from_metadata(
+    metadata: dict[str, Any],
+    include_validations: bool = True,
+    validation_end_row: int = DEFAULT_VALIDATION_END_ROW,
+) -> list[dict[str, Any]]:
+    validation_end_row = max(2, validation_end_row)
+    existing_sheet_ids = sheet_ids_from_metadata_payload(metadata)
+    properties_by_title = sheet_properties_from_metadata_payload(metadata)
+    generated_sheet_ids = generated_sheet_ids_for_missing(existing_sheet_ids)
+    sheet_ids = {**existing_sheet_ids, **generated_sheet_ids}
+    requests: list[dict[str, Any]] = []
+    for spec in SHEETS:
+        sheet_id = sheet_ids[spec.name]
+        if spec.name not in existing_sheet_ids:
+            requests.append(add_sheet_request(spec.name, sheet_id, len(spec.headers), validation_end_row))
+        requests.append(
+            sheet_grid_setup_request(
+                spec.name,
+                sheet_id,
+                len(spec.headers),
+                properties_by_title.get(spec.name, {}),
+                validation_end_row,
+            )
+        )
+        requests.append(header_update_request(spec.name, sheet_ids))
+        requests.append(header_format_request(spec.name, sheet_ids))
+        requests.append(auto_resize_columns_request(spec.name, sheet_ids))
+        if include_validations:
+            for field, allowed_values in CONTROLLED_VOCAB_VALIDATIONS.get(spec.name, {}).items():
+                requests.append(
+                    data_validation_request(
+                        spec.name,
+                        field,
+                        allowed_values,
+                        sheet_ids,
+                        validation_end_row=validation_end_row,
+                    )
+                )
+    return requests
+
+
+def generated_sheet_ids_for_missing(existing_sheet_ids: dict[str, int]) -> dict[str, int]:
+    used_ids = set(existing_sheet_ids.values())
+    generated: dict[str, int] = {}
+    next_sheet_id = GENERATED_SHEET_ID_START
+    for spec in SHEETS:
+        if spec.name in existing_sheet_ids:
+            continue
+        while next_sheet_id in used_ids:
+            next_sheet_id += 1
+        generated[spec.name] = next_sheet_id
+        used_ids.add(next_sheet_id)
+        next_sheet_id += 1
+    return generated
+
+
+def add_sheet_request(
+    sheet_name: str,
+    sheet_id: int,
+    column_count: int,
+    row_count: int,
+) -> dict[str, Any]:
+    return {
+        "addSheet": {
+            "properties": {
+                "sheetId": sheet_id,
+                "title": sheet_name,
+                "gridProperties": {
+                    "rowCount": row_count,
+                    "columnCount": column_count,
+                    "frozenRowCount": 1,
+                },
+            }
+        }
+    }
+
+
+def sheet_grid_setup_request(
+    sheet_name: str,
+    sheet_id: int,
+    column_count: int,
+    properties: dict[str, Any],
+    validation_end_row: int,
+) -> dict[str, Any]:
+    grid = properties.get("gridProperties", {})
+    if not isinstance(grid, dict):
+        grid = {}
+    grid_properties: dict[str, int] = {"frozenRowCount": 1}
+    fields = ["gridProperties.frozenRowCount"]
+    row_count = optional_int(grid.get("rowCount"))
+    if row_count is not None and row_count < validation_end_row:
+        grid_properties["rowCount"] = validation_end_row
+        fields.append("gridProperties.rowCount")
+    existing_column_count = optional_int(grid.get("columnCount"))
+    if existing_column_count is not None and existing_column_count < column_count:
+        grid_properties["columnCount"] = column_count
+        fields.append("gridProperties.columnCount")
+    return {
+        "updateSheetProperties": {
+            "properties": {
+                "sheetId": sheet_id,
+                "title": sheet_name,
+                "gridProperties": grid_properties,
+            },
+            "fields": ",".join(fields),
+        }
+    }
+
+
+def header_update_request(sheet_name: str, sheet_ids: dict[str, int]) -> dict[str, Any]:
+    if sheet_name not in sheet_ids:
+        raise KeyError(f"Missing sheet ID for {sheet_name!r}.")
+    headers = list(sheet_by_name(sheet_name).headers)
+    return {
+        "updateCells": {
+            "start": {
+                "sheetId": sheet_ids[sheet_name],
+                "rowIndex": 0,
+                "columnIndex": 0,
+            },
+            "rows": [
+                {
+                    "values": [
+                        {"userEnteredValue": {"stringValue": header}}
+                        for header in headers
+                    ]
+                }
+            ],
+            "fields": "userEnteredValue",
+        }
+    }
+
+
+def header_format_request(sheet_name: str, sheet_ids: dict[str, int]) -> dict[str, Any]:
+    if sheet_name not in sheet_ids:
+        raise KeyError(f"Missing sheet ID for {sheet_name!r}.")
+    headers = list(sheet_by_name(sheet_name).headers)
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_ids[sheet_name],
+                "startRowIndex": 0,
+                "endRowIndex": 1,
+                "startColumnIndex": 0,
+                "endColumnIndex": len(headers),
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": {"red": 0.12, "green": 0.31, "blue": 0.47},
+                    "textFormat": {
+                        "bold": True,
+                        "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+                    },
+                    "wrapStrategy": "WRAP",
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,textFormat,wrapStrategy)",
+        }
+    }
+
+
+def auto_resize_columns_request(sheet_name: str, sheet_ids: dict[str, int]) -> dict[str, Any]:
+    if sheet_name not in sheet_ids:
+        raise KeyError(f"Missing sheet ID for {sheet_name!r}.")
+    headers = list(sheet_by_name(sheet_name).headers)
+    return {
+        "autoResizeDimensions": {
+            "dimensions": {
+                "sheetId": sheet_ids[sheet_name],
+                "dimension": "COLUMNS",
+                "startIndex": 0,
+                "endIndex": len(headers),
+            }
+        }
+    }
+
+
+def data_validation_request(
+    sheet_name: str,
+    field: str,
+    allowed_values: tuple[str, ...],
+    sheet_ids: dict[str, int],
+    validation_end_row: int = DEFAULT_VALIDATION_END_ROW,
+) -> dict[str, Any]:
+    if sheet_name not in sheet_ids:
+        raise KeyError(f"Missing sheet ID for {sheet_name!r}.")
+    headers = list(sheet_by_name(sheet_name).headers)
+    if field not in headers:
+        raise KeyError(f"Unknown field {field!r} for {sheet_name!r}.")
+    column_index = headers.index(field)
+    return {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_ids[sheet_name],
+                "startRowIndex": 1,
+                "endRowIndex": validation_end_row,
+                "startColumnIndex": column_index,
+                "endColumnIndex": column_index + 1,
+            },
+            "rule": {
+                "condition": {
+                    "type": "ONE_OF_LIST",
+                    "values": [
+                        {"userEnteredValue": str(value)}
+                        for value in allowed_values
+                    ],
+                },
+                "inputMessage": "Choose a value from the controlled vocabulary.",
+                "strict": True,
+                "showCustomUi": True,
+            },
+        }
+    }
+
+
+def optional_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def validate_snapshot(snapshot: dict[str, Any], require_sheet_ids: bool = False) -> dict[str, Any]:
