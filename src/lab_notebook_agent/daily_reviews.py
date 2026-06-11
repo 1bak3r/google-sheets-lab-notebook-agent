@@ -90,6 +90,8 @@ def daily_review_next_actions(run: dict[str, Any]) -> list[str]:
         actions.append("Review appended Literature Evidence rows before relying on them.")
     if int(summary.get("suggestion_rows_to_append", 0) or 0):
         actions.append("Review draft Agent Suggestions and set status to accepted or rejected.")
+    if int(summary.get("suggestion_rows_to_update", 0) or 0):
+        actions.append("Apply Agent Suggestions status updates for completed planned follow-ups.")
     daily_summary = run.get("daily_summary", {}) if isinstance(run.get("daily_summary"), dict) else {}
     for experiment in daily_summary.get("experiments", []) or []:
         if not isinstance(experiment, dict) or not experiment.get("limiting_metrics"):

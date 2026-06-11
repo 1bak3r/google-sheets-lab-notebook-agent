@@ -55,7 +55,9 @@ def build_daily_agent_run(
         daily_log_results_report=daily_log_results_report,
     )
     run["update_experiments"] = build_daily_experiment_updates(tables, run)
+    run["update_agent_suggestions"] = build_daily_suggestion_updates(tables)
     run["summary"]["experiment_cells_to_update"] = len(run["update_experiments"])
+    run["summary"]["suggestion_rows_to_update"] = len(run["update_agent_suggestions"])
     return run
 
 
@@ -121,6 +123,15 @@ def run_workbook_daily_agent(
                 current,
                 "Experiments",
                 experiment_updates,
+                output_path=destination,
+            )
+            current = destination
+        suggestion_updates = run.get("update_agent_suggestions", [])
+        if suggestion_updates:
+            update_workbook_rows_by_key(
+                current,
+                "Agent Suggestions",
+                suggestion_updates,
                 output_path=destination,
             )
     run["applied"] = bool(apply)
@@ -269,10 +280,12 @@ def build_daily_apply_report(run: dict[str, Any]) -> dict[str, Any]:
             "result_rows_to_append": sum(len(row.get("append_results", [])) for row in runs),
             "evidence_rows_to_append": sum(len(row.get("append_literature_evidence", [])) for row in runs),
             "suggestion_rows_to_append": sum(len(row.get("append_agent_suggestions", [])) for row in runs),
+            "suggestion_rows_to_update": len(run.get("update_agent_suggestions", []) or []),
             "daily_review_rows_to_append": 1,
         },
         "append_daily_reviews": [daily_review_row_from_run(run)],
         "update_experiments": run.get("update_experiments", []),
+        "update_agent_suggestions": run.get("update_agent_suggestions", []),
         "runs": runs,
     }
 
@@ -332,6 +345,38 @@ def build_daily_experiment_updates(
                     "value": value,
                 }
             )
+    return updates
+
+
+def build_daily_suggestion_updates(tables: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    experiment_statuses = {
+        str(row.get("experiment_id", "")).strip(): str(row.get("status", "")).strip().lower()
+        for row in tables.get("Experiments", [])
+        if isinstance(row, dict) and str(row.get("experiment_id", "")).strip()
+    }
+    updates = []
+    for row_number, suggestion in enumerate(tables.get("Agent Suggestions", []), start=2):
+        if not isinstance(suggestion, dict):
+            continue
+        status = str(suggestion.get("status", "")).strip().lower()
+        proposed_experiment_id = str(suggestion.get("proposed_experiment_id", "")).strip()
+        suggestion_id = str(suggestion.get("suggestion_id", "")).strip()
+        if status != "run_planned" or not proposed_experiment_id or not suggestion_id:
+            continue
+        if experiment_statuses.get(proposed_experiment_id) != "complete":
+            continue
+        updates.append(
+            {
+                "sheet": "Agent Suggestions",
+                "row_number": row_number,
+                "suggestion_id": suggestion_id,
+                "key_field": "suggestion_id",
+                "key_value": suggestion_id,
+                "field": "status",
+                "value": "run_complete",
+                "proposed_experiment_id": proposed_experiment_id,
+            }
+        )
     return updates
 
 

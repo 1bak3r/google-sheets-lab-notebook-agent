@@ -140,7 +140,9 @@ target-based result analysis, limiting metrics, material audit status, open
 suggestions, and next actions for each experiment selected on that date.
 Open-suggestion actions are status-aware: draft suggestions should be accepted
 or rejected, accepted suggestions should be materialized, and completed
-planned follow-ups should be marked `run_complete`.
+planned follow-ups should be marked `run_complete`. The combined daily agent
+apply/batch path emits that `run_complete` status update automatically when the
+suggestion is `run_planned` and its proposed follow-up experiment is `complete`.
 
 Before running or reviewing one experiment, use `experiment-preflight` to check
 the notebook rows that the agent depends on:
@@ -607,7 +609,9 @@ the original suggestion status to `run_planned`:
 
 Agent reruns treat `draft`, `accepted`, and `run_planned` suggestions as active
 open work for that experiment. Set a suggestion to `rejected` or `run_complete`
-when it should no longer block a fresh result-driven recommendation.
+when it should no longer block a fresh result-driven recommendation. The daily
+agent can emit the `run_complete` update automatically after a planned
+follow-up experiment reaches `complete`.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli materialize-accepted-plans \

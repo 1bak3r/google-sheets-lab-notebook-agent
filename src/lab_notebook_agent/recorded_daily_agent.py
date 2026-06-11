@@ -147,6 +147,10 @@ def apply_recorded_daily_agent_run_to_workbook(
     experiment_updates = dict_rows(apply_report.get("update_experiments", []))
     if experiment_updates:
         update_workbook_rows_by_key(current, "Experiments", experiment_updates, output_path=destination)
+        current = destination
+    suggestion_updates = dict_rows(apply_report.get("update_agent_suggestions", []))
+    if suggestion_updates:
+        update_workbook_rows_by_key(current, "Agent Suggestions", suggestion_updates, output_path=destination)
     return destination
 
 
@@ -171,6 +175,7 @@ def build_recorded_daily_apply_report(
             "normalized_result_rows_to_append": int(daily_summary.get("result_rows_to_append", 0) or 0),
             "evidence_rows_to_append": int(daily_summary.get("evidence_rows_to_append", 0) or 0),
             "suggestion_rows_to_append": int(daily_summary.get("suggestion_rows_to_append", 0) or 0),
+            "suggestion_rows_to_update": int(daily_summary.get("suggestion_rows_to_update", 0) or 0),
             "daily_review_rows_to_append": int(daily_summary.get("daily_review_rows_to_append", 0) or 0),
             "experiment_cells_to_update": len(updates),
         },
@@ -182,6 +187,7 @@ def build_recorded_daily_apply_report(
         "append_results": record_report.get("append_results", []),
         "append_daily_reviews": daily_apply_report.get("append_daily_reviews", []),
         "update_experiments": updates,
+        "update_agent_suggestions": daily_apply_report.get("update_agent_suggestions", []),
         "runs": daily_apply_report.get("runs", []),
     }
 

@@ -1339,6 +1339,65 @@ class ScaffoldTests(unittest.TestCase):
             experiment["next_actions"],
         )
 
+    def test_daily_agent_emits_run_complete_update_for_completed_followup(self) -> None:
+        tables = {
+            "Experiments": [
+                {
+                    "experiment_id": "EP-001",
+                    "date": "2026-06-09",
+                    "process_type": "emulsion polymerization",
+                    "status": "complete",
+                },
+                {
+                    "experiment_id": "EP-001-FUP-001",
+                    "date": "2026-06-10",
+                    "process_type": "emulsion polymerization",
+                    "status": "complete",
+                },
+            ],
+            "Formulations": [],
+            "Master Reagents": [],
+            "Daily Log": [],
+            "Results": [],
+            "Literature Evidence": [],
+            "Agent Suggestions": [
+                {
+                    "suggestion_id": "SUG-EP-001",
+                    "experiment_id": "EP-001",
+                    "recommendation_type": "next_experiment",
+                    "proposed_experiment_id": "EP-001-FUP-001",
+                    "confidence": "medium",
+                    "status": "run_planned",
+                }
+            ],
+            "Daily Reviews": [],
+            "Process Knowledge": [],
+            "Controlled Vocab": [],
+            "Agent Config": [],
+        }
+        snapshot = snapshot_from_tables(
+            tables,
+            {"Experiments": 101, "Agent Suggestions": 222, "Daily Reviews": 333},
+        )
+        run = build_snapshot_daily_agent_run(
+            snapshot,
+            AgentRunConfig(review_date="2026-06-09"),
+        )
+        self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+        self.assertEqual(1, run["summary"]["suggestion_rows_to_update"])
+        self.assertEqual(1, run["apply_report"]["summary"]["suggestion_rows_to_update"])
+        update = run["update_agent_suggestions"][0]
+        self.assertEqual("SUG-EP-001", update["suggestion_id"])
+        self.assertEqual("run_complete", update["value"])
+        self.assertEqual(1, run["apply_audit"]["summary"]["suggestion_rows_to_update"])
+        request = run["batch_update_requests"][-1]
+        self.assertEqual(222, request["updateCells"]["start"]["sheetId"])
+        self.assertEqual(12, request["updateCells"]["start"]["columnIndex"])
+        self.assertEqual(
+            "run_complete",
+            request["updateCells"]["rows"][0]["values"][0]["userEnteredValue"]["stringValue"],
+        )
+
     def test_daily_log_results_normalizes_structured_observations(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
@@ -1502,6 +1561,46 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("LIT-EP-001-001", workbook["Experiments"]["G2"].value)
             self.assertEqual("needs_review", workbook["Experiments"]["I2"].value)
             self.assertIn("Daily review 2026-06-09", workbook["Experiments"]["K2"].value)
+
+    def test_daily_agent_apply_marks_completed_followup_suggestion_run_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            experiments = workbook["Experiments"]
+            experiment_headers = [cell.value for cell in experiments[1]]
+            followup = {
+                "experiment_id": "EP-001-FUP-001",
+                "date": "2026-06-10",
+                "project": "latex",
+                "process_type": "emulsion polymerization",
+                "objective": "Follow-up run",
+                "status": "complete",
+            }
+            experiments.append([followup.get(header, "") for header in experiment_headers])
+            suggestions = workbook["Agent Suggestions"]
+            suggestion_headers = [cell.value for cell in suggestions[1]]
+            suggestion = {
+                "suggestion_id": "SUG-EP-001",
+                "experiment_id": "EP-001",
+                "recommendation_type": "next_experiment",
+                "proposed_experiment_id": "EP-001-FUP-001",
+                "confidence": "medium",
+                "status": "run_planned",
+            }
+            suggestions.append([suggestion.get(header, "") for header in suggestion_headers])
+            workbook.save(workbook_path)
+
+            output_path = Path(tmpdir) / "daily-applied.xlsx"
+            run_workbook_daily_agent(
+                workbook_path,
+                AgentRunConfig(review_date="2026-06-09"),
+                apply=True,
+                output_workbook=output_path,
+            )
+            workbook = load_workbook(output_path)
+            suggestions = workbook["Agent Suggestions"]
+            headers = [cell.value for cell in suggestions[1]]
+            self.assertEqual("run_complete", suggestions.cell(row=2, column=headers.index("status") + 1).value)
 
     def test_agent_run_apply_writes_evidence_and_suggestion_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

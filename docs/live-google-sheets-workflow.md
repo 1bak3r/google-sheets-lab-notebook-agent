@@ -370,7 +370,9 @@ Review material gaps, measurements, target-based result-analysis summaries,
 limiting metrics, issue tags, and open suggestions before applying new rows.
 Open-suggestion next actions are status-aware: draft suggestions should be
 accepted or rejected, accepted suggestions should be materialized, and completed
-planned follow-ups should be marked `run_complete`.
+planned follow-ups should be marked `run_complete`. The combined daily agent
+apply/batch path emits that `run_complete` status update automatically when the
+suggestion is `run_planned` and its proposed follow-up experiment is `complete`.
 
 To run the daily summary and suggestion agent together, use the combined daily
 agent command. It writes pending normalized Results rows, the same read-only
@@ -527,7 +529,8 @@ draft `Formulations`, and expected `Results` rows from the stored
 Agent reruns treat `draft`, `accepted`, and `run_planned` as active suggestion
 statuses. Set completed follow-ups to `run_complete`, or declined suggestions to
 `rejected`, before asking the agent for a fresh recommendation on that
-experiment.
+experiment. The daily agent emits the `run_complete` update automatically when a
+planned follow-up experiment reaches `complete`.
 
 For emulsion-polymerization suggestions, the stored plan may include
 `planned_formulation_adjustments`. These are conservative row-level changes
