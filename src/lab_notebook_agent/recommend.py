@@ -29,6 +29,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
     literature = entry.get("literature_evidence", []) or []
     literature_context = build_literature_context(literature)
     linked_evidence_ids = literature_context["evidence_ids"]
+    historical_context = entry.get("historical_context") if isinstance(entry.get("historical_context"), dict) else {}
 
     if "emulsion" in process_type and "polymer" in process_type:
         proposal = emulsion_polymerization_next_experiment(entry, signals, matches, literature_context)
@@ -41,6 +42,8 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
     rationale = proposal["rationale"]
     if material_audit["summary"]:
         rationale = f"{rationale} Material audit: {material_audit['summary']}"
+    if historical_context.get("guidance"):
+        rationale = f"{rationale} Notebook history: {' '.join(historical_context['guidance'][:2])}"
     if linked_evidence_ids:
         rationale = (
             f"{rationale} Literature Evidence rows {', '.join(linked_evidence_ids[:5])} "
@@ -55,6 +58,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         material_audit=material_audit,
         linked_evidence_ids=linked_evidence_ids,
         literature_context=literature_context,
+        historical_context=historical_context,
     )
 
     return {
@@ -74,6 +78,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         "status": "draft",
         "detected_signals": sorted(signals),
         "material_audit": material_audit,
+        "historical_context": historical_context,
         "literature_context": literature_context,
         "proposed_experiment_plan": proposed_plan,
         "knowledge_matches": [
@@ -327,10 +332,18 @@ def build_proposed_experiment_plan(
     material_audit: dict[str, Any],
     linked_evidence_ids: list[str],
     literature_context: dict[str, Any] | None = None,
+    historical_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     process_type = str(entry.get("process_type", ""))
     if "emulsion" in process_type.lower() and "polymer" in process_type.lower():
-        return build_emulsion_polymerization_plan(entry, signals, material_audit, linked_evidence_ids, literature_context)
+        return build_emulsion_polymerization_plan(
+            entry,
+            signals,
+            material_audit,
+            linked_evidence_ids,
+            literature_context,
+            historical_context,
+        )
     experiment_id = str(entry.get("experiment_id", "unassigned"))
     return {
         "parent_experiment_id": experiment_id,
@@ -351,6 +364,7 @@ def build_proposed_experiment_plan(
         "prerequisites": material_audit.get("recommendations", []),
         "linked_evidence_ids": linked_evidence_ids,
         "literature_support": literature_plan_support(literature_context),
+        "history_support": history_plan_support(historical_context),
     }
 
 
@@ -360,6 +374,7 @@ def build_emulsion_polymerization_plan(
     material_audit: dict[str, Any],
     linked_evidence_ids: list[str],
     literature_context: dict[str, Any] | None = None,
+    historical_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experiment_id = str(entry.get("experiment_id", "EP"))
     suggested_experiment_id = f"{experiment_id}-FUP-001"
@@ -442,6 +457,7 @@ def build_emulsion_polymerization_plan(
         "prerequisites": prerequisites,
         "linked_evidence_ids": linked_evidence_ids,
         "literature_support": literature_plan_support(literature_context),
+        "history_support": history_plan_support(historical_context),
         "sheet_rows": {
             "experiments": [
                 {
@@ -477,6 +493,16 @@ def literature_plan_support(literature_context: dict[str, Any] | None) -> dict[s
         "relevance_tags": context.get("relevance_tags", []),
         "guidance": context.get("guidance", []),
         "supporting_findings": context.get("supporting_findings", []),
+    }
+
+
+def history_plan_support(historical_context: dict[str, Any] | None) -> dict[str, Any]:
+    context = historical_context or {}
+    return {
+        "prior_experiment_count": context.get("prior_experiment_count", 0),
+        "prior_experiments": context.get("prior_experiments", []),
+        "measurement_benchmarks": context.get("measurement_benchmarks", []),
+        "guidance": context.get("guidance", []),
     }
 
 

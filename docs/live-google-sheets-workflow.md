@@ -367,6 +367,9 @@ Suggestions rows are emitted for it.
 When evidence is available, each suggestion includes `literature_context`, and
 the proposed plan includes `literature_support` so reviewers can see which tags
 and findings influenced the follow-up.
+Agent runs also include `historical_context`, and proposed plans include
+`history_support`, so same-process prior Results rows can be used as controls
+or benchmarks when reviewing the next experiment.
 
 ## 7. Audit Before Applying
 

@@ -107,6 +107,9 @@ non-zero status, the report marks that experiment `skipped` with
 When evidence rows are present, the recommendation also includes a
 `literature_context` block with evidence IDs, relevance tag counts, concise
 findings, and guidance inferred from tags or finding text.
+Agent runs also include `historical_context` for same-process prior experiments,
+including result benchmarks and guidance when previous runs reached better
+particle size, conversion, or coagulum outcomes.
 
 Run the same agent as a daily notebook review. This processes experiments whose
 `Experiments.date` or `Daily Log.timestamp` starts with the requested date, and
@@ -452,6 +455,8 @@ reviewable before execution:
 - linked `Literature Evidence` IDs used to support the draft.
 - `literature_support` with the evidence tags, guidance, and findings that
   influenced the recommendation.
+- `history_support` with same-process prior experiments, result benchmarks, and
+  notebook-history guidance used as controls or comparison points.
 - `sheet_rows` with draft `Experiments` values, copied/reviewable
   `Formulations` rows, and expected `Results` measurements to capture.
 

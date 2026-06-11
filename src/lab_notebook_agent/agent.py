@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .history import build_historical_result_context
 from .litscout import (
     build_litscout_query,
     litscout_works_to_evidence_rows,
@@ -27,6 +28,7 @@ class AgentRunConfig:
     experiment_ids: tuple[str, ...] = ()
     review_date: str | None = None
     context_limit: int = 5
+    history_limit: int = 5
     evidence_limit: int = 3
     force: bool = False
     litscout_export: str | None = None
@@ -72,6 +74,8 @@ def build_agent_report(
         entry = build_experiment_entry_from_tables(tables, experiment_id)
         query = build_litscout_query(entry)
         notebook_matches = notebook_context_matches(tables, query, experiment_id, limit=config.context_limit)
+        historical_context = build_historical_result_context(tables, experiment_id, limit=config.history_limit)
+        entry["historical_context"] = historical_context
         existing_evidence = evidence_for_experiment(tables, experiment_id)
         new_evidence = []
         litscout_export_path = config.litscout_export
@@ -95,6 +99,7 @@ def build_agent_report(
                             "litscout_export": litscout_export_path or "",
                             "litscout_status": litscout_failure_status(exc),
                             "notebook_context_matches": notebook_matches,
+                            "historical_context": historical_context,
                             "append_literature_evidence": [],
                             "append_agent_suggestions": [],
                         }
@@ -121,6 +126,7 @@ def build_agent_report(
                 "litscout_export": litscout_export_path or "",
                 "litscout_status": litscout_status,
                 "notebook_context_matches": notebook_matches,
+                "historical_context": historical_context,
                 "append_literature_evidence": rows_not_present(
                     new_evidence,
                     existing_rows=tables.get("Literature Evidence", []),

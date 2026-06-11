@@ -528,6 +528,46 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn("Master Reagents", context_sheets)
             self.assertIn("Process Knowledge", context_sheets)
 
+    def test_agent_report_includes_prior_result_history_in_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            tables["Experiments"].insert(
+                0,
+                {
+                    "experiment_id": "EP-000",
+                    "date": "2026-06-01",
+                    "project": "SABER CCSP",
+                    "process_type": "emulsion polymerization",
+                    "objective": "Baseline particle size screen.",
+                    "status": "complete",
+                    "summary": "Lower particle size but stable latex.",
+                },
+            )
+            tables["Results"].append(
+                {
+                    "experiment_id": "EP-000",
+                    "sample_id": "EP-000-L1",
+                    "measurement_type": "DLS particle size",
+                    "value": "240",
+                    "units": "nm",
+                    "quality_flag": "ok",
+                    "interpretation": "Within target range.",
+                }
+            )
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",)),
+            )
+            run = report["runs"][0]
+            self.assertEqual(1, run["historical_context"]["prior_experiment_count"])
+            self.assertIn("EP-000", run["historical_context"]["guidance"][0])
+            benchmarks = {row["metric_key"]: row for row in run["historical_context"]["measurement_benchmarks"]}
+            self.assertEqual("240", benchmarks["particle_size"]["min"])
+            suggestion = run["append_agent_suggestions"][0]
+            self.assertIn("Notebook history", suggestion["rationale"])
+            self.assertEqual(1, suggestion["historical_context"]["prior_experiment_count"])
+            self.assertEqual("EP-000", suggestion["proposed_experiment_plan"]["history_support"]["prior_experiments"][0]["experiment_id"])
+
     def test_agent_report_can_run_litscout_and_records_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
