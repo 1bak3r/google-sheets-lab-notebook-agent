@@ -56,6 +56,10 @@ automation.
   suggestion statuses, and daily review statuses.
 - `Agent Config`: model, retrieval, and safety settings.
 
+Schema extensions are append-only for live compatibility. New Daily Log outcome
+fields and Agent Suggestions structured-plan fields are added after the original
+live columns so setup refreshes do not shift historical row meanings.
+
 Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and

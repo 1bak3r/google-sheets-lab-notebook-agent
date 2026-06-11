@@ -148,6 +148,32 @@ class ScaffoldTests(unittest.TestCase):
             list(daily_log.headers)[13:],
         )
 
+    def test_agent_suggestions_schema_keeps_existing_columns_as_prefix(self) -> None:
+        agent_suggestions = next(spec for spec in SHEETS if spec.name == "Agent Suggestions")
+        self.assertEqual(
+            [
+                "suggestion_id",
+                "created_at",
+                "experiment_id",
+                "recommendation_type",
+                "rationale",
+                "proposed_change",
+                "expected_effect",
+                "linked_evidence_ids",
+                "safety_check",
+                "confidence",
+                "status",
+            ],
+            list(agent_suggestions.headers)[:11],
+        )
+        self.assertEqual(
+            [
+                "proposed_experiment_id",
+                "proposed_plan_json",
+            ],
+            list(agent_suggestions.headers)[11:],
+        )
+
     def test_semantic_search_finds_emulsion_polymerization_material_roles(self) -> None:
         results = LocalSemanticIndex.from_default().search(
             "emulsion polymerization monomers initiator surfactant particle size",
@@ -1039,12 +1065,13 @@ class ScaffoldTests(unittest.TestCase):
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
         suggestion = build_recommendation(entry)
         values = suggestion_to_values(suggestion)
+        headers = list(next(spec for spec in SHEETS if spec.name == "Agent Suggestions").headers)
         self.assertEqual(13, len(values))
         self.assertEqual("EP-001", values[2])
-        self.assertEqual("EP-001-FUP-001", values[8])
-        self.assertIn("surfactant_package", values[9])
-        self.assertIn("formulations", values[9])
-        self.assertEqual("draft", values[-1])
+        self.assertEqual("EP-001-FUP-001", values[headers.index("proposed_experiment_id")])
+        self.assertIn("surfactant_package", values[headers.index("proposed_plan_json")])
+        self.assertIn("formulations", values[headers.index("proposed_plan_json")])
+        self.assertEqual("draft", values[headers.index("status")])
 
     def test_append_suggestion_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1058,11 +1085,12 @@ class ScaffoldTests(unittest.TestCase):
             )
             workbook = load_workbook(output_path)
             worksheet = workbook["Agent Suggestions"]
+            headers = [cell.value for cell in worksheet[1]]
             self.assertEqual("EP-001", worksheet["C2"].value)
-            self.assertEqual("EP-001-FUP-001", worksheet["I2"].value)
-            self.assertIn("surfactant_package", worksheet["J2"].value)
-            self.assertIn("formulations", worksheet["J2"].value)
-            self.assertEqual("draft", worksheet["M2"].value)
+            self.assertEqual("EP-001-FUP-001", worksheet.cell(row=2, column=headers.index("proposed_experiment_id") + 1).value)
+            self.assertIn("surfactant_package", worksheet.cell(row=2, column=headers.index("proposed_plan_json") + 1).value)
+            self.assertIn("formulations", worksheet.cell(row=2, column=headers.index("proposed_plan_json") + 1).value)
+            self.assertEqual("draft", worksheet.cell(row=2, column=headers.index("status") + 1).value)
 
     def test_suggest_from_workbook_uses_joined_tab_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2208,7 +2236,8 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual(1, run["apply_audit"]["summary"]["suggestion_rows_to_update"])
         request = run["batch_update_requests"][-1]
         self.assertEqual(222, request["updateCells"]["start"]["sheetId"])
-        self.assertEqual(12, request["updateCells"]["start"]["columnIndex"])
+        agent_suggestion_headers = list(next(spec for spec in SHEETS if spec.name == "Agent Suggestions").headers)
+        self.assertEqual(agent_suggestion_headers.index("status"), request["updateCells"]["start"]["columnIndex"])
         self.assertEqual(
             "run_complete",
             request["updateCells"]["rows"][0]["values"][0]["userEnteredValue"]["stringValue"],
@@ -2649,7 +2678,11 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("LIT-EP-001-001", workbook["Experiments"]["G2"].value)
             self.assertEqual("EP-001", workbook["Agent Suggestions"]["C2"].value)
             self.assertEqual("LIT-EP-001-001", workbook["Agent Suggestions"]["H2"].value)
-            self.assertEqual("EP-001-FUP-001", workbook["Agent Suggestions"]["I2"].value)
+            headers = [cell.value for cell in workbook["Agent Suggestions"][1]]
+            self.assertEqual(
+                "EP-001-FUP-001",
+                workbook["Agent Suggestions"].cell(row=2, column=headers.index("proposed_experiment_id") + 1).value,
+            )
 
     def test_agent_report_skips_existing_suggestion_without_force(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3344,7 +3377,11 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("M-SKA", workbook["Formulations"]["B5"].value)
             self.assertEqual("225", workbook["Formulations"]["M5"].value)
             self.assertEqual("particle_size_nm", workbook["Results"]["C3"].value)
-            self.assertEqual("run_planned", workbook["Agent Suggestions"]["M2"].value)
+            headers = [cell.value for cell in workbook["Agent Suggestions"][1]]
+            self.assertEqual(
+                "run_planned",
+                workbook["Agent Suggestions"].cell(row=2, column=headers.index("status") + 1).value,
+            )
 
     def test_accepted_suggestion_materialization_derives_stock_quantities_from_master_reagents(self) -> None:
         tables = {

@@ -330,11 +330,11 @@ SHEETS: tuple[SheetSpec, ...] = (
             Column("proposed_change", "Concrete change or experiment to run."),
             Column("expected_effect", "Expected measurable effect."),
             Column("linked_evidence_ids", "Literature Evidence IDs used."),
-            Column("proposed_experiment_id", "Suggested follow-up experiment ID if accepted."),
-            Column("proposed_plan_json", "Structured proposed experiment plan for review/materialization."),
             Column("safety_check", "Safety or review reminder."),
             Column("confidence", "low, medium, high."),
             Column("status", "Controlled suggestion status."),
+            Column("proposed_experiment_id", "Suggested follow-up experiment ID if accepted."),
+            Column("proposed_plan_json", "Structured proposed experiment plan for review/materialization."),
         ),
     ),
     SheetSpec(

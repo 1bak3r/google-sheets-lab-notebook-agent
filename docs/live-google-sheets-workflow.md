@@ -44,8 +44,8 @@ headers, autosizes columns, and adds controlled-vocabulary dropdowns through row
 
 For existing live sheets, schema extensions must preserve current columns as a
 prefix. The setup batch rewrites header rows but does not move row data, so new
-Daily Log outcome fields are appended after the original observation and
-attachment columns to keep historical rows aligned.
+Daily Log outcome fields and Agent Suggestions structured-plan fields are
+appended after the original live columns to keep historical rows aligned.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-doctor \
