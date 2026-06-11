@@ -53,6 +53,9 @@ def build_litscout_commands(
     entry: dict[str, Any],
     knowledge_results: list[SearchResult] | None = None,
     artifacts_dir: str | Path = "artifacts",
+    sources: str = "openalex,crossref,semantic_scholar",
+    depth: str = "light",
+    limit: int = 25,
 ) -> list[str]:
     experiment_id = slugify(str(entry.get("experiment_id", "experiment")))
     session_name = f"labnotebook/{experiment_id}"
@@ -61,8 +64,8 @@ def build_litscout_commands(
     return [
         (
             f'litscout search multi "{query}" '
-            "--sources openalex,crossref,semantic_scholar "
-            "--depth light --limit 25 --save "
+            f"--sources {sources} "
+            f"--depth {depth} --limit {limit} --save "
             f"--session-name {session_name}"
         ),
         (

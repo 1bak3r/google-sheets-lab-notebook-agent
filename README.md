@@ -56,6 +56,11 @@ automation.
   suggestion statuses, and daily review statuses.
 - `Agent Config`: model, retrieval, and safety settings.
 
+Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
+`default_context_limit`, `default_history_limit`, `default_evidence_limit`,
+`default_litscout_sources`, `default_litscout_depth`, and
+`default_litscout_limit`. Non-default CLI arguments still take precedence.
+
 ## LitScout Bridge
 
 The recommendation output includes reproducible commands for a manual LitScout
@@ -107,6 +112,10 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
   --evidence-limit 3 \
   --report-output artifacts/agent-run-ep-001-live-litscout.json
 ```
+
+The generated LitScout command text and live `--run-litscout` invocation use the
+effective LitScout defaults from `Agent Config` unless the command line supplies
+non-default values.
 
 Existing reviewed evidence is reused before a new LitScout search/export. The
 agent recognizes rows whose `evidence_id` uses the generated

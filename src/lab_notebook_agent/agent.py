@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -43,12 +43,23 @@ class AgentRunConfig:
     artifacts_dir: str = "artifacts"
 
 
+AGENT_CONFIG_FIELDS = {
+    "default_context_limit": ("context_limit", "nonnegative_int"),
+    "default_history_limit": ("history_limit", "nonnegative_int"),
+    "default_evidence_limit": ("evidence_limit", "nonnegative_int"),
+    "default_litscout_sources": ("litscout_sources", "string"),
+    "default_litscout_depth": ("litscout_depth", "string"),
+    "default_litscout_limit": ("litscout_limit", "nonnegative_int"),
+}
+
+
 def build_agent_report(
     tables: dict[str, list[dict[str, Any]]],
     config: AgentRunConfig | None = None,
     index: LocalSemanticIndex | None = None,
 ) -> dict[str, Any]:
-    config = config or AgentRunConfig()
+    requested_config = config or AgentRunConfig()
+    config, agent_config = effective_agent_run_config(tables, requested_config)
     index = index or LocalSemanticIndex.from_default()
     works = load_litscout_export(config.litscout_export) if config.litscout_export else []
     runs = []
@@ -81,6 +92,7 @@ def build_agent_report(
         historical_context = build_historical_result_context(tables, experiment_id, limit=config.history_limit)
         entry["historical_context"] = historical_context
         entry["suggested_experiment_id"] = next_followup_experiment_id(tables, experiment_id)
+        entry["litscout_config"] = litscout_command_config(config)
         existing_evidence = evidence_for_experiment(tables, experiment_id)
         new_evidence = []
         litscout_export_path = config.litscout_export
@@ -152,6 +164,7 @@ def build_agent_report(
             "selected_experiment_ids": selected_ids,
         },
         "summary": summary,
+        "agent_config": agent_config,
         "runs": runs,
         "update_experiments": experiment_updates,
     }
@@ -296,6 +309,72 @@ def litscout_failure_status(exc: Exception) -> dict[str, Any]:
     if isinstance(exc, FileNotFoundError):
         status["message"] = "LitScout CLI was not found on PATH."
     return status
+
+
+def effective_agent_run_config(
+    tables: dict[str, list[dict[str, Any]]],
+    config: AgentRunConfig,
+) -> tuple[AgentRunConfig, dict[str, Any]]:
+    defaults = AgentRunConfig()
+    sheet_values = agent_config_values(tables)
+    overrides: dict[str, Any] = {}
+    warnings = []
+    for key, (field, value_type) in AGENT_CONFIG_FIELDS.items():
+        if key not in sheet_values:
+            continue
+        if getattr(config, field) != getattr(defaults, field):
+            continue
+        parsed, warning = parse_agent_config_value(key, sheet_values[key], value_type)
+        if warning:
+            warnings.append(warning)
+            continue
+        if parsed != getattr(config, field):
+            overrides[field] = parsed
+    effective = replace(config, **overrides) if overrides else config
+    return effective, {
+        "schema": "lab-notebook-agent-run-config.v1",
+        "sheet_keys_seen": sorted(key for key in sheet_values if key in AGENT_CONFIG_FIELDS),
+        "applied_overrides": overrides,
+        "warnings": warnings,
+        "effective_config": asdict(effective),
+    }
+
+
+def agent_config_values(tables: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for row in tables.get("Agent Config", []):
+        if not isinstance(row, dict):
+            continue
+        key = str(row.get("key", "")).strip()
+        if key and key not in values:
+            values[key] = row.get("value", "")
+    return values
+
+
+def parse_agent_config_value(key: str, value: Any, value_type: str) -> tuple[Any, dict[str, str] | None]:
+    text = str(value or "").strip()
+    if not text:
+        return None, {"key": key, "value": text, "message": "Blank Agent Config value was ignored."}
+    if value_type == "string":
+        return text, None
+    if value_type == "nonnegative_int":
+        try:
+            parsed = int(text)
+        except ValueError:
+            return None, {"key": key, "value": text, "message": "Expected a non-negative integer."}
+        if parsed < 0:
+            return None, {"key": key, "value": text, "message": "Expected a non-negative integer."}
+        return parsed, None
+    return None, {"key": key, "value": text, "message": f"Unsupported Agent Config value type {value_type!r}."}
+
+
+def litscout_command_config(config: AgentRunConfig) -> dict[str, Any]:
+    return {
+        "sources": config.litscout_sources,
+        "depth": config.litscout_depth,
+        "limit": config.litscout_limit,
+        "artifacts_dir": config.artifacts_dir,
+    }
 
 
 def selected_experiment_ids(

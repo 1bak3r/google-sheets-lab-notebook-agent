@@ -1224,6 +1224,45 @@ class ScaffoldTests(unittest.TestCase):
             )
             self.assertEqual([], report["runs"][0]["notebook_context_matches"])
 
+    def test_agent_config_sheet_controls_defaults_and_litscout_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            tables = load_workbook_tables(workbook_path)
+            set_agent_config(tables, "default_context_limit", "0")
+            set_agent_config(tables, "default_litscout_sources", "crossref")
+            set_agent_config(tables, "default_litscout_depth", "medium")
+            set_agent_config(tables, "default_litscout_limit", "2")
+
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",), litscout_export=str(works_path)),
+            )
+
+            self.assertEqual(0, report["agent_config"]["effective_config"]["context_limit"])
+            self.assertEqual(2, report["agent_config"]["effective_config"]["litscout_limit"])
+            self.assertEqual("crossref", report["agent_config"]["applied_overrides"]["litscout_sources"])
+            self.assertEqual([], report["runs"][0]["notebook_context_matches"])
+            command = report["runs"][0]["append_agent_suggestions"][0]["litscout"]["commands"][0]
+            self.assertIn("--sources crossref", command)
+            self.assertIn("--depth medium --limit 2", command)
+
+    def test_agent_config_sheet_does_not_override_explicit_runtime_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            tables = load_workbook_tables(workbook_path)
+            set_agent_config(tables, "default_context_limit", "0")
+
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",), litscout_export=str(works_path), context_limit=2),
+            )
+
+            self.assertEqual(2, report["agent_config"]["effective_config"]["context_limit"])
+            self.assertNotIn("context_limit", report["agent_config"]["applied_overrides"])
+            self.assertTrue(report["runs"][0]["notebook_context_matches"])
+
     def test_daily_review_selects_experiments_by_date_and_log_timestamp(self) -> None:
         tables = {
             "Experiments": [
@@ -2290,6 +2329,15 @@ def mark_first_suggestion_accepted(path: Path) -> None:
     status_column = headers.index("status") + 1
     worksheet.cell(row=2, column=status_column, value="accepted")
     workbook.save(path)
+
+
+def set_agent_config(tables: dict[str, list[dict[str, object]]], key: str, value: str) -> None:
+    rows = tables.setdefault("Agent Config", [])
+    for row in rows:
+        if str(row.get("key", "")).strip() == key:
+            row["value"] = value
+            return
+    rows.append({"key": key, "value": value, "notes": ""})
 
 
 def validations_by_range(worksheet: object) -> dict[str, str]:

@@ -101,9 +101,23 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         ],
         "litscout": {
             "query": build_litscout_query(entry, matches),
-            "commands": build_litscout_commands(entry, matches),
+            "commands": build_litscout_commands(entry, matches, **litscout_command_kwargs(entry)),
         },
     }
+
+
+def litscout_command_kwargs(entry: dict[str, Any]) -> dict[str, Any]:
+    config = entry.get("litscout_config", {}) if isinstance(entry.get("litscout_config"), dict) else {}
+    kwargs = {}
+    if config.get("artifacts_dir"):
+        kwargs["artifacts_dir"] = config["artifacts_dir"]
+    if config.get("sources"):
+        kwargs["sources"] = config["sources"]
+    if config.get("depth"):
+        kwargs["depth"] = config["depth"]
+    if config.get("limit") not in ("", None):
+        kwargs["limit"] = config["limit"]
+    return kwargs
 
 
 def entry_query(entry: dict[str, Any]) -> str:
