@@ -7,6 +7,7 @@ from typing import Any
 
 from .litscout import build_litscout_commands, build_litscout_query
 from .materials import audit_experiment_materials
+from .result_analysis import build_result_analysis
 from .search import LocalSemanticIndex, SearchResult, flatten_text
 
 
@@ -23,6 +24,8 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
     query = entry_query(entry)
     matches = index.search(query, k=4)
     signals = extract_signals(entry)
+    result_analysis = build_result_analysis(entry)
+    signals.update(str(signal) for signal in result_analysis.get("signals", []) if str(signal).strip())
     material_audit = audit_experiment_materials(entry)
     experiment_id = str(entry.get("experiment_id", "unassigned"))
     process_type = str(entry.get("process_type", "")).lower()
@@ -40,6 +43,10 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
     if "coagulum" in signals or "particle_size_high" in signals:
         confidence = "medium"
     rationale = proposal["rationale"]
+    if result_analysis.get("summary"):
+        rationale = f"{rationale} Result analysis: {result_analysis['summary']}"
+    for guidance in result_analysis.get("guidance", [])[:2]:
+        rationale = f"{rationale} Result guidance: {guidance}"
     if material_audit["summary"]:
         rationale = f"{rationale} Material audit: {material_audit['summary']}"
     if historical_context.get("guidance"):
@@ -56,6 +63,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         entry,
         signals=signals,
         material_audit=material_audit,
+        result_analysis=result_analysis,
         linked_evidence_ids=linked_evidence_ids,
         literature_context=literature_context,
         historical_context=historical_context,
@@ -77,6 +85,7 @@ def build_recommendation(entry: dict[str, Any], index: LocalSemanticIndex | None
         "confidence": confidence,
         "status": "draft",
         "detected_signals": sorted(signals),
+        "result_analysis": result_analysis,
         "material_audit": material_audit,
         "historical_context": historical_context,
         "literature_context": literature_context,
@@ -330,6 +339,7 @@ def build_proposed_experiment_plan(
     entry: dict[str, Any],
     signals: set[str],
     material_audit: dict[str, Any],
+    result_analysis: dict[str, Any],
     linked_evidence_ids: list[str],
     literature_context: dict[str, Any] | None = None,
     historical_context: dict[str, Any] | None = None,
@@ -340,6 +350,7 @@ def build_proposed_experiment_plan(
             entry,
             signals,
             material_audit,
+            result_analysis,
             linked_evidence_ids,
             literature_context,
             historical_context,
@@ -362,6 +373,7 @@ def build_proposed_experiment_plan(
         "measurements": ["record primary result metric", "record observations", "record deviations"],
         "acceptance_criteria": ["Result can be attributed to the selected variable."],
         "prerequisites": material_audit.get("recommendations", []),
+        "result_support": result_plan_support(result_analysis),
         "linked_evidence_ids": linked_evidence_ids,
         "literature_support": literature_plan_support(literature_context),
         "history_support": history_plan_support(historical_context),
@@ -372,6 +384,7 @@ def build_emulsion_polymerization_plan(
     entry: dict[str, Any],
     signals: set[str],
     material_audit: dict[str, Any],
+    result_analysis: dict[str, Any],
     linked_evidence_ids: list[str],
     literature_context: dict[str, Any] | None = None,
     historical_context: dict[str, Any] | None = None,
@@ -455,6 +468,7 @@ def build_emulsion_polymerization_plan(
             "No new safety or handling issue appears during feed, hold, or workup.",
         ],
         "prerequisites": prerequisites,
+        "result_support": result_plan_support(result_analysis),
         "linked_evidence_ids": linked_evidence_ids,
         "literature_support": literature_plan_support(literature_context),
         "history_support": history_plan_support(historical_context),
@@ -493,6 +507,16 @@ def literature_plan_support(literature_context: dict[str, Any] | None) -> dict[s
         "relevance_tags": context.get("relevance_tags", []),
         "guidance": context.get("guidance", []),
         "supporting_findings": context.get("supporting_findings", []),
+    }
+
+
+def result_plan_support(result_analysis: dict[str, Any] | None) -> dict[str, Any]:
+    analysis = result_analysis or {}
+    return {
+        "summary": analysis.get("summary", ""),
+        "signals": analysis.get("signals", []),
+        "limiting_metrics": analysis.get("limiting_metrics", []),
+        "guidance": analysis.get("guidance", []),
     }
 
 

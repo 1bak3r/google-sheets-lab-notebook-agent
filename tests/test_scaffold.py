@@ -72,6 +72,7 @@ from lab_notebook_agent.recorded_daily_agent import (
     build_recorded_daily_agent_run,
     build_snapshot_recorded_daily_agent_run,
 )
+from lab_notebook_agent.result_analysis import build_result_analysis
 from lab_notebook_agent.schema import SHEETS, workbook_contract
 from lab_notebook_agent.search import LocalSemanticIndex
 from lab_notebook_agent.sheets import (
@@ -199,6 +200,30 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("litscout search multi", suggestion["litscout"]["commands"][0])
         self.assertIn("material_audit", suggestion)
         self.assertIn("proposed_experiment_plan", suggestion)
+        self.assertIn("result_analysis", suggestion)
+        self.assertIn("particle_size_high", suggestion["result_analysis"]["signals"])
+        self.assertIn("result_support", suggestion["proposed_experiment_plan"])
+        self.assertTrue(suggestion["proposed_experiment_plan"]["result_support"]["limiting_metrics"])
+
+    def test_result_analysis_flags_emulsion_outcome_limits(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["results"].append(
+            {
+                "sample_id": "EP-001-C",
+                "measurement_type": "conversion",
+                "value": "72",
+                "units": "%",
+                "quality_flag": "observed",
+            }
+        )
+        analysis = build_result_analysis(entry)
+        self.assertEqual("lab-notebook-agent-result-analysis.v1", analysis["schema"])
+        self.assertIn("particle_size_high", analysis["signals"])
+        self.assertIn("low_conversion", analysis["signals"])
+        limiting = {row["metric_key"]: row for row in analysis["limiting_metrics"]}
+        self.assertEqual("above_target", limiting["particle_size"]["status"])
+        self.assertEqual("below_target", limiting["conversion"]["status"])
+        self.assertIn("Outcome limits", analysis["summary"])
 
     def test_rows_from_values_drops_blank_rows_and_preserves_headers(self) -> None:
         rows = rows_from_values(

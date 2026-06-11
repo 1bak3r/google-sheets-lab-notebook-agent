@@ -533,6 +533,8 @@ reviewable before execution:
 - objective, hypothesis, variables, controls, prerequisites, and acceptance
   criteria for the proposed follow-up.
 - linked `Literature Evidence` IDs used to support the draft.
+- `result_support` with target comparisons, limiting metrics, and guidance from
+  the current Results and structured Daily Log measurements.
 - `literature_support` with the evidence tags, guidance, and findings that
   influenced the recommendation.
 - `history_support` with same-process prior experiments, result benchmarks, and
