@@ -420,14 +420,18 @@ for Google Sheets captures.
 For a new experiment, the agent can scaffold process-aware starter rows before
 the run is recorded. For emulsion polymerization, it checks expected roles such
 as monomer, initiator, surfactant, and aqueous phase. Existing `Master Reagents`
-rows are reused when possible; otherwise the report creates placeholder reagent
-rows that must be replaced with verified identities and properties.
+rows are ranked with the same process-material search logic and reused when a
+role-compatible candidate exists; otherwise the report creates placeholder
+reagent rows that must be replaced with verified identities and properties.
+Use `--query` to bias candidate selection toward the specific chemistry or
+observed issue.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli scaffold-materials \
   --workbook artifacts/lab_notebook_template.xlsx \
   --experiment-id EP-002 \
   --process-type "emulsion polymerization" \
+  --query "styrene acrylate latex particle size" \
   --report-output artifacts/material-scaffold-ep-002.json
 ```
 

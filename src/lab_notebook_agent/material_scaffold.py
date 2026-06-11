@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .material_search import (
+    master_reagent_records,
+    material_role_query,
+    ranked_reagent_candidates,
+)
 from .materials import role_specs_for_process
+from .search import LocalSemanticIndex
 from .sheets import append_rows_to_workbook
 
 
@@ -66,17 +72,21 @@ def build_material_scaffold_report(
     experiment_id: str,
     process_type: str | None = None,
     include_optional: bool = False,
+    query: str = "",
 ) -> dict[str, Any]:
     process_type = process_type or experiment_process_type(tables, experiment_id)
     role_specs = role_specs_for_process(str(process_type).lower())
+    master_reagents = [row for row in tables.get("Master Reagents", []) if isinstance(row, dict)]
+    reagent_records = master_reagent_records(master_reagents)
+    reagent_index = LocalSemanticIndex(reagent_records) if reagent_records else None
     existing_formulation = [
         row
         for row in tables.get("Formulations", [])
-        if str(row.get("experiment_id", "")).strip() == experiment_id
+        if isinstance(row, dict) and str(row.get("experiment_id", "")).strip() == experiment_id
     ]
     existing_reagent_ids = {
         str(row.get("reagent_id", "")).strip()
-        for row in tables.get("Master Reagents", [])
+        for row in master_reagents
         if row.get("reagent_id")
     }
     append_master_reagents: list[dict[str, Any]] = []
@@ -98,13 +108,21 @@ def build_material_scaffold_report(
             continue
 
         role_plan = DEFAULT_ROLE_PLANS.get(role_group, {})
-        reagent = matching_master_reagent(tables.get("Master Reagents", []), spec)
-        if reagent:
-            reagent_id = str(reagent.get("reagent_id", "")).strip()
+        candidate = ranked_master_reagent_candidate(
+            spec,
+            str(process_type),
+            query,
+            reagent_records,
+            reagent_index,
+        )
+        if candidate:
+            reagent_id = str(candidate.get("reagent_id", "")).strip()
             reagent_action = "reuse_existing_master_reagent"
+            selection_method = "ranked_process_material_search"
         else:
             reagent_id = placeholder_reagent_id(experiment_id, role_group)
             reagent_action = "append_placeholder_master_reagent"
+            selection_method = "placeholder"
             if reagent_id not in existing_reagent_ids:
                 append_master_reagents.append(
                     placeholder_master_reagent(
@@ -125,21 +143,24 @@ def build_material_scaffold_report(
         if not formulation_duplicate(formulation_row, existing_formulation + append_formulations):
             append_formulations.append(formulation_row)
 
-        role_scaffold.append(
-            {
-                "role_group": role_group,
-                "status": "missing",
-                "action": reagent_action,
-                "reagent_id": reagent_id,
-                "target_role": formulation_row["target_role"],
-            }
-        )
+        role_entry = {
+            "role_group": role_group,
+            "status": "missing",
+            "action": reagent_action,
+            "selection_method": selection_method,
+            "reagent_id": reagent_id,
+            "target_role": formulation_row["target_role"],
+        }
+        if candidate:
+            role_entry["selected_candidate"] = scaffold_candidate_summary(candidate)
+        role_scaffold.append(role_entry)
 
     return {
         "schema": "lab-notebook-agent-material-scaffold.v1",
         "experiment_id": experiment_id,
         "process_type": process_type,
         "include_optional": include_optional,
+        "query": query,
         "role_scaffold": role_scaffold,
         "append_master_reagents": append_master_reagents,
         "append_formulations": append_formulations,
@@ -156,7 +177,11 @@ def apply_material_scaffold_report_to_workbook(
     report: dict[str, Any],
     output_workbook: str | Path | None = None,
 ) -> Path:
-    destination = Path(output_workbook).expanduser().resolve() if output_workbook else Path(workbook_path).expanduser().resolve()
+    destination = (
+        Path(output_workbook).expanduser().resolve()
+        if output_workbook
+        else Path(workbook_path).expanduser().resolve()
+    )
     current = Path(workbook_path).expanduser().resolve()
     master_rows = report.get("append_master_reagents", [])
     formulation_rows = report.get("append_formulations", [])
@@ -185,22 +210,43 @@ def formulation_has_role(formulation: list[dict[str, Any]], spec: dict[str, Any]
     return False
 
 
-def matching_master_reagent(
-    master_reagents: list[dict[str, Any]],
+def ranked_master_reagent_candidate(
     spec: dict[str, Any],
+    process_type: str,
+    query: str,
+    reagent_records: list[dict[str, Any]],
+    reagent_index: LocalSemanticIndex | None,
 ) -> dict[str, Any] | None:
-    acceptable = {str(role).lower() for role in spec.get("acceptable_roles", [])}
-    role_group = str(spec.get("role_group", "")).lower()
-    for row in master_reagents:
-        category = str(row.get("category", "")).strip().lower()
-        role = str(row.get("role", "")).strip().lower()
-        if category in acceptable or role in acceptable or category == role_group or role_group in role:
-            return row
-        if role_group == "aqueous_phase" and category in {"solvent", "buffer"}:
-            return row
-        if role_group == "crosslinker_or_chain_transfer" and category in {"crosslinker", "chain_transfer_agent"}:
-            return row
+    role_query = material_role_query(process_type, spec, query)
+    candidates = ranked_reagent_candidates(
+        spec,
+        role_query,
+        reagent_records,
+        reagent_index,
+        k=max(1, len(reagent_records)),
+    )
+    for candidate in candidates:
+        if candidate.get("match_reasons") == ["semantic_text_match"]:
+            continue
+        if str(candidate.get("reagent_id", "")).strip():
+            return candidate
     return None
+
+
+def scaffold_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "score": candidate.get("score", 0),
+        "semantic_score": candidate.get("semantic_score", 0),
+        "match_reasons": candidate.get("match_reasons", []),
+        "row_number": candidate.get("row_number", ""),
+        "reagent_id": candidate.get("reagent_id", ""),
+        "name": candidate.get("name", ""),
+        "common_name": candidate.get("common_name", ""),
+        "category": candidate.get("category", ""),
+        "role": candidate.get("role", ""),
+        "important_fields_complete": candidate.get("important_fields_complete", True),
+        "missing_important_fields": candidate.get("missing_important_fields", []),
+    }
 
 
 def placeholder_reagent_id(experiment_id: str, role_group: str) -> str:

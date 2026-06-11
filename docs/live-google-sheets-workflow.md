@@ -231,6 +231,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli search-materials \
 For emulsion polymerization, this expands the process into role groups such as
 monomer, initiator, surfactant, and aqueous phase, then reports candidate
 reagents, process-knowledge matches, and missing physical-property fields.
+The `scaffold-materials` command uses the same ranked candidate signal when it
+creates starter formulation rows. Add `--query` to bias selection toward the
+planned chemistry or issue being investigated; semantic-only matches are
+reported by search but are not auto-selected for starter rows without a
+matching role/category.
 
 Run a per-experiment preflight check when you need to see whether one notebook
 entry is ready for planning or result-driven review:

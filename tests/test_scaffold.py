@@ -753,6 +753,47 @@ class ScaffoldTests(unittest.TestCase):
             workbook = load_workbook(output_path)
             self.assertEqual("EP-002", workbook["Formulations"]["A5"].value)
 
+    def test_material_scaffold_uses_ranked_material_candidate(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {
+                    "reagent_id": "M-GENERIC",
+                    "name": "generic vinyl monomer",
+                    "common_name": "generic monomer",
+                    "category": "monomer",
+                    "role": "monomer",
+                },
+                {
+                    "reagent_id": "M-BA",
+                    "name": "butyl acrylate",
+                    "common_name": "BA",
+                    "category": "monomer",
+                    "role": "core_monomer",
+                    "molecular_weight_g_mol": "128.17",
+                    "density_g_mL": "0.90",
+                    "notes": "soft acrylate latex monomer for emulsion polymerization",
+                },
+            ],
+            "Formulations": [],
+            "Process Knowledge": [],
+        }
+        report = build_material_scaffold_report(
+            tables,
+            experiment_id="EP-RANK",
+            process_type="emulsion polymerization",
+            query="butyl acrylate latex",
+        )
+        formulations_by_role = {
+            row["target_role"]: row
+            for row in report["append_formulations"]
+        }
+        self.assertEqual("M-BA", formulations_by_role["core_monomer"]["reagent_id"])
+        roles = {row["role_group"]: row for row in report["role_scaffold"]}
+        self.assertEqual("ranked_process_material_search", roles["monomer"]["selection_method"])
+        self.assertEqual("M-BA", roles["monomer"]["selected_candidate"]["reagent_id"])
+        self.assertIn("example_token_overlap", roles["monomer"]["selected_candidate"]["match_reasons"])
+        self.assertEqual("append_placeholder_master_reagent", roles["initiator"]["action"])
+
     def test_material_scaffold_snapshot_emits_google_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

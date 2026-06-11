@@ -479,6 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     scaffold_materials_source.add_argument("--snapshot", help="Google Sheets snapshot JSON file.")
     scaffold_materials_parser.add_argument("--experiment-id", required=True)
     scaffold_materials_parser.add_argument("--process-type", help="Process type to scaffold. Defaults to the Experiments row process type.")
+    scaffold_materials_parser.add_argument("--query", default="", help="Optional process/material search text to bias existing reagent selection.")
     scaffold_materials_parser.add_argument("--include-optional", action="store_true", help="Include optional process roles such as crosslinker or chain-transfer agent.")
     scaffold_materials_parser.add_argument("--apply", action="store_true", help="Append generated rows to the workbook.")
     scaffold_materials_parser.add_argument("--workbook-output", help="Optional output .xlsx path for workbook apply mode. Defaults to in-place.")
@@ -966,6 +967,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_id=args.experiment_id,
             process_type=args.process_type,
             include_optional=args.include_optional,
+            query=args.query,
         )
         if args.apply:
             if not args.workbook:
