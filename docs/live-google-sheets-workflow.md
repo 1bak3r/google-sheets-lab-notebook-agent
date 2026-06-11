@@ -10,6 +10,7 @@ changing the core agent logic.
 - Append target sheet IDs:
   - `Master Reagents`: recapture from spreadsheet metadata before applying starter rows
   - `Formulations`: recapture from spreadsheet metadata before applying starter rows, formulation normalization, or accepted plans
+  - `Daily Log`: recapture from spreadsheet metadata before applying structured experiment records
   - `Literature Evidence`: `1198739748`
   - `Agent Suggestions`: `89758567`
   - `Experiments`: recapture from spreadsheet metadata before applying daily reviews or accepted plans
@@ -179,9 +180,11 @@ Write the collected values to:
 normal suggestion workflow. `Daily Reviews` needs a `sheet_id` value for the
 combined daily run. `Master Reagents` and `Formulations` need IDs when applying
 material starter rows, and `Formulations` needs an ID when writing normalized
-formulation quantity cells. `Experiments`, `Formulations`, and `Results` need
-IDs when materializing accepted suggestions into planned follow-up rows, and
-`Results` needs an ID when appending normalized Daily Log measurements.
+formulation quantity cells. `Experiments`, `Formulations`, `Daily Log`, and
+`Results` need IDs when applying a structured experiment record. `Experiments`,
+`Formulations`, and `Results` need IDs when materializing accepted suggestions
+into planned follow-up rows, and `Results` needs an ID when appending normalized
+Daily Log measurements.
 
 ## 4. Validate The Snapshot
 
@@ -225,6 +228,23 @@ The report checks required experiment fields, expected material roles,
 formulation quantities, Master Reagents physical properties, placeholder
 reagents, observations, Results rows, linked literature evidence, and open
 suggestions.
+
+Convert a structured experiment record JSON into appendable notebook rows when
+the operator has captured a run outside the sheet or in an intake form:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
+  --record examples/emulsion_polymerization_record.json \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --report-output artifacts/live-sheet-record-ep-010.json \
+  --audit-output artifacts/live-sheet-record-ep-010-audit.json \
+  --batch-output artifacts/live-sheet-record-ep-010-batch.json
+```
+
+The batch appends `Experiments`, `Formulations`, `Daily Log`, and `Results`
+rows. Proceed only if the audit is valid; otherwise fix duplicate experiment
+IDs, duplicate Daily Log timestamps/observations, or missing sheet IDs before
+applying.
 
 Normalize blank formulation quantity cells when the sheet already has enough
 inputs to calculate them. The command derives missing `mass_g`, `volume_mL`, or

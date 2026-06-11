@@ -18,6 +18,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli search-materials --workbook art
 PYTHONPATH=src python3 -m lab_notebook_agent.cli suggest --entry examples/emulsion_polymerization_entry.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli audit-workbook --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --output artifacts/ep-001-material-audit.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli experiment-preflight --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --stage review --output artifacts/ep-001-preflight-review.json
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment --record examples/emulsion_polymerization_record.json --report-output artifacts/record-ep-010.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/formulation-normalization-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --report-output artifacts/daily-log-results-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary --workbook artifacts/lab_notebook_template.xlsx --review-date 2026-06-09 --output artifacts/daily-summary-2026-06-09.json
@@ -145,6 +146,38 @@ properties, generated placeholder reagents, Daily Log observations, Results
 measurements, linked literature evidence, and open suggestions. Use
 `--stage planning` before a run and `--stage review` when the agent should make
 a result-driven follow-up suggestion.
+
+Use `record-experiment` to turn a structured run record into appendable
+`Experiments`, `Formulations`, `Daily Log`, and `Results` rows:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
+  --record examples/emulsion_polymerization_record.json \
+  --report-output artifacts/record-ep-010.json
+```
+
+Apply the generated rows to a workbook copy:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
+  --record examples/emulsion_polymerization_record.json \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --apply \
+  --workbook-output artifacts/lab_notebook_recorded.xlsx \
+  --report-output artifacts/record-ep-010-applied.json
+```
+
+For a Google Sheets snapshot, include sheet IDs for `Experiments`,
+`Formulations`, `Daily Log`, and `Results`, then emit an audited batch:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-experiment \
+  --record examples/emulsion_polymerization_record.json \
+  --snapshot artifacts/live-sheet-snapshot.json \
+  --report-output artifacts/live-sheet-record-ep-010.json \
+  --audit-output artifacts/live-sheet-record-ep-010-audit.json \
+  --batch-output artifacts/live-sheet-record-ep-010-batch.json
+```
 
 Use `normalize-formulations` after entering at least one quantitative basis in
 `Formulations` and the matching physical properties in `Master Reagents`. It

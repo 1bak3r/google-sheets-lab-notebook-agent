@@ -1,0 +1,41 @@
+{
+  "experiment": {
+    "experiment_id": "EP-010",
+    "date": "2026-06-10",
+    "project": "SABER CCSP",
+    "process_type": "emulsion polymerization",
+    "objective": "Record a completed small-particle latex run.",
+    "hypothesis": "Higher surfactant active basis should reduce particle size.",
+    "operator": "",
+    "status": "complete",
+    "summary": "Latex stayed stable through workup."
+  },
+  "formulation": [
+    {
+      "reagent_id": "S-SDS",
+      "phase": "aqueous",
+      "target_role": "surfactant",
+      "mass_g": "0.35",
+      "feed_order": "0"
+    }
+  ],
+  "observations": [
+    {
+      "timestamp": "2026-06-10T14:00:00",
+      "stage": "feed",
+      "temperature_C": "70",
+      "rpm": "250",
+      "observation": "Feed stayed stable; particle size 310 nm by quick DLS."
+    },
+    "No visible coagulum after filtration."
+  ],
+  "results": [
+    {
+      "measurement_type": "DLS particle size",
+      "method": "intensity average",
+      "value": "310",
+      "units": "nm",
+      "condition": "post-workup"
+    }
+  ]
+}

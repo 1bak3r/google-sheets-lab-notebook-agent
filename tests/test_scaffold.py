@@ -22,6 +22,10 @@ from lab_notebook_agent.daily_log_results import (
     apply_daily_log_results_report_to_workbook,
     build_daily_log_results_report,
 )
+from lab_notebook_agent.experiment_record import (
+    apply_experiment_record_report_to_workbook,
+    build_experiment_record_report,
+)
 from lab_notebook_agent.formulation_normalization import (
     apply_formulation_normalization_report_to_workbook,
     build_formulation_normalization_report,
@@ -209,6 +213,52 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("emulsion polymerization", entry["process_type"])
             self.assertEqual(3, len(entry["formulation"]))
             self.assertEqual("solketal acrylate", entry["formulation"][0]["reagent_name"])
+
+    def test_experiment_record_report_normalizes_notebook_rows(self) -> None:
+        report = build_experiment_record_report(sample_experiment_record())
+        self.assertEqual("lab-notebook-agent-experiment-record.v1", report["schema"])
+        self.assertEqual("EP-010", report["experiment_id"])
+        self.assertEqual(1, report["summary"]["experiment_rows_to_append"])
+        self.assertEqual(1, report["summary"]["formulation_rows_to_append"])
+        self.assertEqual(2, report["summary"]["daily_log_rows_to_append"])
+        self.assertEqual(1, report["summary"]["result_rows_to_append"])
+        self.assertEqual("EP-010", report["append_formulations"][0]["experiment_id"])
+        self.assertEqual("feed", report["append_daily_log"][0]["process_stage"])
+        self.assertEqual("EP-010-R-001", report["append_results"][0]["sample_id"])
+        self.assertEqual("observed", report["append_results"][0]["quality_flag"])
+        self.assertEqual([], report["warnings"])
+
+    def test_experiment_record_report_appends_to_workbook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output_path = Path(tmpdir) / "recorded.xlsx"
+            report = build_experiment_record_report(sample_experiment_record())
+            apply_experiment_record_report_to_workbook(workbook_path, report, output_workbook=output_path)
+            tables = load_workbook_tables(output_path)
+            self.assertTrue(any(row["experiment_id"] == "EP-010" for row in tables["Experiments"]))
+            self.assertTrue(any(row["experiment_id"] == "EP-010" for row in tables["Daily Log"]))
+            self.assertTrue(any(row["sample_id"] == "EP-010-R-001" for row in tables["Results"]))
+
+    def test_experiment_record_snapshot_emits_daily_log_google_batch_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            snapshot = snapshot_from_tables(
+                load_workbook_tables(workbook_path),
+                {
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Daily Log": 104,
+                    "Results": 102,
+                },
+            )
+            report = build_experiment_record_report(sample_experiment_record())
+            audit = audit_report_against_snapshot(report, snapshot)
+            self.assertTrue(audit["valid"], audit)
+            requests = batch_update_requests_from_report(report, sheet_ids_from_snapshot(snapshot))
+            self.assertEqual(
+                [101, 103, 104, 102],
+                [request["appendCells"]["sheetId"] for request in requests],
+            )
 
     def test_material_audit_detects_emulsion_roles_and_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1039,7 +1089,16 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual([sheet.name for sheet in SHEETS], [row["sheet_name"] for row in plan["sheets"]])
         apply_sheets = [row["sheet_name"] for row in plan["sheets"] if row["used_for_apply"]]
         self.assertEqual(
-            ["Master Reagents", "Experiments", "Formulations", "Results", "Literature Evidence", "Agent Suggestions", "Daily Reviews"],
+            [
+                "Master Reagents",
+                "Experiments",
+                "Daily Log",
+                "Formulations",
+                "Results",
+                "Literature Evidence",
+                "Agent Suggestions",
+                "Daily Reviews",
+            ],
             apply_sheets,
         )
 
@@ -1434,6 +1493,49 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(103, requests[1]["appendCells"]["sheetId"])
             self.assertEqual(102, requests[2]["appendCells"]["sheetId"])
             self.assertEqual(222, requests[3]["updateCells"]["start"]["sheetId"])
+
+
+def sample_experiment_record() -> dict[str, object]:
+    return {
+        "experiment": {
+            "experiment_id": "EP-010",
+            "date": "2026-06-10",
+            "project": "SABER CCSP",
+            "process_type": "emulsion polymerization",
+            "objective": "Record a completed small-particle latex run.",
+            "hypothesis": "Higher surfactant active basis should reduce particle size.",
+            "status": "complete",
+            "summary": "Latex stayed stable through workup.",
+        },
+        "formulation": [
+            {
+                "reagent_id": "S-SDS",
+                "phase": "aqueous",
+                "target_role": "surfactant",
+                "mass_g": "0.35",
+                "feed_order": "0",
+            }
+        ],
+        "observations": [
+            {
+                "timestamp": "2026-06-10T14:00:00",
+                "stage": "feed",
+                "temperature_C": "70",
+                "rpm": "250",
+                "observation": "Feed stayed stable; particle size 310 nm by quick DLS.",
+            },
+            "No visible coagulum after filtration.",
+        ],
+        "results": [
+            {
+                "measurement_type": "DLS particle size",
+                "method": "intensity average",
+                "value": "310",
+                "units": "nm",
+                "condition": "post-workup",
+            }
+        ],
+    }
 
 
 def write_fake_litscout_export(path: Path) -> Path:

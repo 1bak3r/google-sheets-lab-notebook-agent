@@ -129,6 +129,7 @@ def snapshot_capture_plan(
                     "Experiments",
                     "Formulations",
                     "Results",
+                    "Daily Log",
                     "Literature Evidence",
                     "Agent Suggestions",
                     "Daily Reviews",
@@ -476,6 +477,7 @@ def audit_report_against_snapshot(
     formulation_updates = collect_rows(report, "update_formulations")
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
+    daily_log_rows = collect_rows(report, "append_daily_log")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
     experiment_updates = collect_rows(report, "update_experiments")
     suggestion_updates = collect_rows(report, "update_agent_suggestions")
@@ -542,6 +544,18 @@ def audit_report_against_snapshot(
                     "value": "|".join(row_key),
                 }
             )
+    existing_daily_log_keys = {daily_log_row_key(row) for row in tables.get("Daily Log", [])}
+    for row in daily_log_rows:
+        row_key = daily_log_row_key(row)
+        if row_key in existing_daily_log_keys:
+            errors.append(
+                {
+                    "code": "duplicate_append",
+                    "sheet": "Daily Log",
+                    "key": "experiment_id,timestamp,observation",
+                    "value": "|".join(row_key),
+                }
+            )
     for row in daily_review_rows:
         review_id = str(row.get("review_id", ""))
         if review_id and any(str(existing.get("review_id", "")) == review_id for existing in tables.get("Daily Reviews", [])):
@@ -565,6 +579,8 @@ def audit_report_against_snapshot(
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Experiments"})
     if require_sheet_ids and result_rows and "Results" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Results"})
+    if require_sheet_ids and daily_log_rows and "Daily Log" not in sheet_ids:
+        errors.append({"code": "missing_apply_sheet_id", "sheet": "Daily Log"})
     if require_sheet_ids and daily_review_rows and "Daily Reviews" not in sheet_ids:
         errors.append({"code": "missing_apply_sheet_id", "sheet": "Daily Reviews"})
 
@@ -582,6 +598,7 @@ def audit_report_against_snapshot(
             "experiment_rows_to_append": len(experiment_rows),
             "experiment_cells_to_update": len(experiment_updates),
             "result_rows_to_append": len(result_rows),
+            "daily_log_rows_to_append": len(daily_log_rows),
             "daily_review_rows_to_append": len(daily_review_rows),
             "request_count": len(batch_update_requests_from_report(report, sheet_ids)) if not errors else 0,
         },
@@ -603,6 +620,7 @@ def batch_update_requests_from_report(
     formulation_updates = collect_rows(report, "update_formulations")
     experiment_rows = collect_rows(report, "append_experiments")
     result_rows = collect_rows(report, "append_results")
+    daily_log_rows = collect_rows(report, "append_daily_log")
     daily_review_rows = collect_rows(report, "append_daily_reviews")
     experiment_updates = collect_rows(report, "update_experiments")
     suggestion_updates = collect_rows(report, "update_agent_suggestions")
@@ -614,6 +632,8 @@ def batch_update_requests_from_report(
         requests.append(append_cells_request("Formulations", formulation_rows, sheet_ids))
     for update in formulation_updates:
         requests.append(update_cell_request("Formulations", update, sheet_ids))
+    if daily_log_rows:
+        requests.append(append_cells_request("Daily Log", daily_log_rows, sheet_ids))
     if result_rows:
         requests.append(append_cells_request("Results", result_rows, sheet_ids))
     if evidence_rows:
@@ -685,6 +705,14 @@ def update_cell_request(
             "fields": "userEnteredValue",
         }
     }
+
+
+def daily_log_row_key(row: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(row.get("experiment_id", "")).strip(),
+        str(row.get("timestamp", "")).strip(),
+        str(row.get("observation", "")).strip(),
+    )
 
 
 def collect_rows(report: dict[str, Any], key: str) -> list[dict[str, Any]]:
