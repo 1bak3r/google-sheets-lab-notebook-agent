@@ -1317,6 +1317,110 @@ class ScaffoldTests(unittest.TestCase):
             self.assertNotIn("context_limit", report["agent_config"]["applied_overrides"])
             self.assertTrue(report["runs"][0]["notebook_context_matches"])
 
+    def test_agent_can_require_literature_evidence_before_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+
+            report = build_agent_report(
+                tables,
+                AgentRunConfig(experiment_ids=("EP-001",), require_literature_evidence=True),
+            )
+
+            run = report["runs"][0]
+            self.assertEqual("skipped", run["status"])
+            self.assertEqual("literature_evidence_required", run["skip_reason"])
+            self.assertEqual(1, report["summary"]["literature_evidence_required"])
+            self.assertEqual(0, report["summary"]["suggestion_rows_to_append"])
+            self.assertEqual([], run["append_agent_suggestions"])
+
+    def test_agent_config_can_require_literature_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            set_agent_config(tables, "require_literature_evidence", "true")
+
+            report = build_agent_report(tables, AgentRunConfig(experiment_ids=("EP-001",)))
+
+            self.assertTrue(report["agent_config"]["effective_config"]["require_literature_evidence"])
+            self.assertTrue(report["agent_config"]["applied_overrides"]["require_literature_evidence"])
+            self.assertEqual("literature_evidence_required", report["runs"][0]["skip_reason"])
+
+    def test_required_literature_evidence_allows_litscout_exported_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+
+            report = build_agent_report(
+                load_workbook_tables(workbook_path),
+                AgentRunConfig(
+                    experiment_ids=("EP-001",),
+                    litscout_export=str(works_path),
+                    require_literature_evidence=True,
+                ),
+            )
+
+            run = report["runs"][0]
+            self.assertEqual("ready", run["status"])
+            self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
+            self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+            self.assertEqual(["LIT-EP-001-001"], run["append_agent_suggestions"][0]["linked_evidence_ids"])
+
+    def test_agent_run_cli_can_require_literature_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output = Path(tmpdir) / "agent-report.json"
+
+            with patch("builtins.print"):
+                exit_code = main(
+                    [
+                        "agent-run",
+                        "--workbook",
+                        str(workbook_path),
+                        "--experiment-id",
+                        "EP-001",
+                        "--require-literature-evidence",
+                        "--report-output",
+                        str(output),
+                    ]
+                )
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("literature_evidence_required", report["runs"][0]["skip_reason"])
+            self.assertEqual(1, report["summary"]["literature_evidence_required"])
+
+    def test_agent_run_cli_can_allow_ungrounded_suggestions_over_agent_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            config_sheet = workbook["Agent Config"]
+            for row in config_sheet.iter_rows(min_row=2):
+                if row[0].value == "require_literature_evidence":
+                    row[1].value = "true"
+                    break
+            workbook.save(workbook_path)
+            output = Path(tmpdir) / "agent-report.json"
+
+            with patch("builtins.print"):
+                exit_code = main(
+                    [
+                        "agent-run",
+                        "--workbook",
+                        str(workbook_path),
+                        "--experiment-id",
+                        "EP-001",
+                        "--allow-ungrounded-suggestions",
+                        "--report-output",
+                        str(output),
+                    ]
+                )
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("ready", report["runs"][0]["status"])
+            self.assertFalse(report["agent_config"]["effective_config"]["require_literature_evidence"])
+            self.assertNotIn("require_literature_evidence", report["agent_config"]["applied_overrides"])
+            self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+
     def test_agent_config_confidence_floor_skips_low_confidence_suggestion(self) -> None:
         tables = low_confidence_agent_tables(confidence_floor="medium")
 

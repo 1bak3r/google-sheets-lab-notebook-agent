@@ -62,7 +62,10 @@ Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
 `default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
 confidence required before a draft is appended. Use
 `--suggestion-confidence-floor low|medium|high` on agent commands to override it
-for one run. Non-default CLI arguments still take precedence.
+for one run. `require_literature_evidence` can force suggestions to be skipped
+unless Literature Evidence is already linked or generated during the run. Use
+`--require-literature-evidence` or `--allow-ungrounded-suggestions` to override
+that setting for one run. Non-default CLI arguments still take precedence.
 
 ## LitScout Bridge
 
@@ -133,6 +136,9 @@ If a generated recommendation falls below `suggestion_confidence_floor`, the run
 is marked `skipped` with `skip_reason: suggestion_confidence_below_floor`; the
 suppressed draft remains in the JSON report for audit but is not appended to
 `Agent Suggestions`.
+If `require_literature_evidence` is enabled and no existing or newly generated
+Literature Evidence rows are available, the run is marked `skipped` with
+`skip_reason: literature_evidence_required`.
 When evidence rows are present, the recommendation also includes a
 `literature_context` block with evidence IDs, relevance tag counts, concise
 findings, and guidance inferred from tags or finding text.

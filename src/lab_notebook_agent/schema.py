@@ -420,6 +420,7 @@ SHEETS: tuple[SheetSpec, ...] = (
             ("default_litscout_depth", "light", "Increase to medium/intense when a search is promising."),
             ("default_litscout_limit", "8", "LitScout works to retrieve when the agent runs LitScout live."),
             ("suggestion_confidence_floor", "medium", "Human review required before running suggested experiments."),
+            ("require_literature_evidence", "false", "Set true to skip suggestions unless Literature Evidence is linked or generated."),
             ("safety_review_required", "true", "Agent suggestions do not replace SDS, SOP, or PI review."),
         ),
     ),

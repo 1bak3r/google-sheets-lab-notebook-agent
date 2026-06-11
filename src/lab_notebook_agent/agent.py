@@ -26,6 +26,7 @@ from .sheets import (
 
 OPEN_SUGGESTION_STATUSES = {"draft", "accepted", "run_planned"}
 DEFAULT_SUGGESTION_CONFIDENCE_FLOOR = "low"
+DEFAULT_REQUIRE_LITERATURE_EVIDENCE = False
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class AgentRunConfig:
     history_limit: int = 5
     evidence_limit: int = 3
     suggestion_confidence_floor: str | None = None
+    require_literature_evidence: bool | None = None
     force: bool = False
     litscout_export: str | None = None
     run_litscout: bool = False
@@ -53,6 +55,7 @@ AGENT_CONFIG_FIELDS = {
     "default_litscout_depth": ("litscout_depth", "string"),
     "default_litscout_limit": ("litscout_limit", "nonnegative_int"),
     "suggestion_confidence_floor": ("suggestion_confidence_floor", "confidence"),
+    "require_literature_evidence": ("require_literature_evidence", "bool"),
 }
 
 
@@ -137,12 +140,30 @@ def build_agent_report(
                 )
                 entry["literature_evidence"] = new_evidence
 
-        suggestion = build_recommendation(entry, index)
         evidence_rows_to_append = rows_not_present(
             new_evidence,
             existing_rows=tables.get("Literature Evidence", []),
             key="evidence_id",
         )
+        if config.require_literature_evidence and not entry.get("literature_evidence"):
+            runs.append(
+                {
+                    "experiment_id": experiment_id,
+                    "status": "skipped",
+                    "skip_reason": "literature_evidence_required",
+                    "require_literature_evidence": True,
+                    "litscout_query": query,
+                    "litscout_export": litscout_export_path or "",
+                    "litscout_status": litscout_status,
+                    "notebook_context_matches": notebook_matches,
+                    "historical_context": historical_context,
+                    "append_literature_evidence": evidence_rows_to_append,
+                    "append_agent_suggestions": [],
+                }
+            )
+            continue
+
+        suggestion = build_recommendation(entry, index)
         suggestion_confidence = normalized_confidence(suggestion.get("confidence", ""))
         confidence_floor = normalized_confidence(config.suggestion_confidence_floor)
         if confidence_below_floor(suggestion_confidence, confidence_floor):
@@ -362,6 +383,11 @@ def effective_agent_run_config(
         and config.suggestion_confidence_floor is None
     ):
         overrides["suggestion_confidence_floor"] = DEFAULT_SUGGESTION_CONFIDENCE_FLOOR
+    if (
+        "require_literature_evidence" not in overrides
+        and config.require_literature_evidence is None
+    ):
+        overrides["require_literature_evidence"] = DEFAULT_REQUIRE_LITERATURE_EVIDENCE
     effective = replace(config, **overrides) if overrides else config
     return effective, {
         "schema": "lab-notebook-agent-run-config.v1",
@@ -384,7 +410,7 @@ def agent_config_values(tables: dict[str, list[dict[str, Any]]]) -> dict[str, An
 
 
 def parse_agent_config_value(key: str, value: Any, value_type: str) -> tuple[Any, dict[str, str] | None]:
-    text = str(value or "").strip()
+    text = "" if value is None else str(value).strip()
     if not text:
         return None, {"key": key, "value": text, "message": "Blank Agent Config value was ignored."}
     if value_type == "string":
@@ -402,6 +428,13 @@ def parse_agent_config_value(key: str, value: Any, value_type: str) -> tuple[Any
         if not normalized:
             return None, {"key": key, "value": text, "message": "Expected one of low, medium, or high."}
         return normalized, None
+    if value_type == "bool":
+        normalized = text.lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True, None
+        if normalized in {"false", "0", "no", "off"}:
+            return False, None
+        return None, {"key": key, "value": text, "message": "Expected a boolean value such as true or false."}
     return None, {"key": key, "value": text, "message": f"Unsupported Agent Config value type {value_type!r}."}
 
 
@@ -713,5 +746,8 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, int]:
         ),
         "confidence_below_floor": sum(
             1 for run in runs if run.get("skip_reason") == "suggestion_confidence_below_floor"
+        ),
+        "literature_evidence_required": sum(
+            1 for run in runs if run.get("skip_reason") == "literature_evidence_required"
         ),
     }

@@ -69,6 +69,23 @@ def add_suggestion_confidence_floor_argument(parser: argparse.ArgumentParser) ->
     )
 
 
+def add_literature_requirement_arguments(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--require-literature-evidence",
+        dest="require_literature_evidence",
+        action="store_true",
+        default=None,
+        help="Skip suggestion append unless linked or newly generated Literature Evidence is available.",
+    )
+    group.add_argument(
+        "--allow-ungrounded-suggestions",
+        dest="require_literature_evidence",
+        action="store_false",
+        help="Allow suggestions without Literature Evidence for this run, overriding Agent Config.",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lab-notebook-agent")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -150,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     record_daily_parser.add_argument("--litscout-limit", type=int, default=8)
     record_daily_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(record_daily_parser)
+    add_literature_requirement_arguments(record_daily_parser)
     record_daily_parser.add_argument("--artifacts-dir", default="artifacts")
     record_daily_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     record_daily_parser.add_argument("--apply", action="store_true", help="Append generated rows and updates to the workbook.")
@@ -202,6 +220,7 @@ def main(argv: list[str] | None = None) -> int:
     daily_agent_parser.add_argument("--litscout-limit", type=int, default=8)
     daily_agent_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(daily_agent_parser)
+    add_literature_requirement_arguments(daily_agent_parser)
     daily_agent_parser.add_argument("--artifacts-dir", default="artifacts")
     daily_agent_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     daily_agent_parser.add_argument("--apply", action="store_true", help="Append agent rows to the workbook. Workbook source only.")
@@ -265,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     agent_parser.add_argument("--litscout-limit", type=int, default=8)
     agent_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(agent_parser)
+    add_literature_requirement_arguments(agent_parser)
     agent_parser.add_argument("--artifacts-dir", default="artifacts")
     agent_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     agent_parser.add_argument("--apply", action="store_true", help="Append report rows to the workbook.")
@@ -295,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     snapshot_parser.add_argument("--litscout-limit", type=int, default=8)
     snapshot_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(snapshot_parser)
+    add_literature_requirement_arguments(snapshot_parser)
     snapshot_parser.add_argument("--artifacts-dir", default="artifacts")
     snapshot_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     snapshot_parser.add_argument("--report-output", help="Optional report JSON path. Defaults to stdout.")
@@ -361,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
     google_agent_parser.add_argument("--litscout-limit", type=int, default=8)
     google_agent_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(google_agent_parser)
+    add_literature_requirement_arguments(google_agent_parser)
     google_agent_parser.add_argument("--artifacts-dir", default="artifacts")
     google_agent_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     google_agent_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
@@ -404,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     google_record_daily_parser.add_argument("--litscout-limit", type=int, default=8)
     google_record_daily_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(google_record_daily_parser)
+    add_literature_requirement_arguments(google_record_daily_parser)
     google_record_daily_parser.add_argument("--artifacts-dir", default="artifacts")
     google_record_daily_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     google_record_daily_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
@@ -432,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     google_daily_agent_parser.add_argument("--litscout-limit", type=int, default=8)
     google_daily_agent_parser.add_argument("--evidence-limit", type=int, default=3)
     add_suggestion_confidence_floor_argument(google_daily_agent_parser)
+    add_literature_requirement_arguments(google_daily_agent_parser)
     google_daily_agent_parser.add_argument("--artifacts-dir", default="artifacts")
     google_daily_agent_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
     google_daily_agent_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
@@ -644,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -741,6 +766,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -823,6 +849,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -873,6 +900,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -1018,6 +1046,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -1071,6 +1100,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
@@ -1106,6 +1136,7 @@ def main(argv: list[str] | None = None) -> int:
             history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
             force=args.force,
             litscout_export=args.litscout_export,
             run_litscout=args.run_litscout,
