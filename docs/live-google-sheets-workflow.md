@@ -477,9 +477,10 @@ Agent runs read supported `Agent Config` defaults from the live snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
 `default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
-confidence required before a draft is appended. Non-default CLI arguments still
-take precedence, and generated LitScout command text uses the effective
-LitScout settings.
+confidence required before a draft is appended. Use
+`--suggestion-confidence-floor low|medium|high` on agent commands to override it
+for one run. Non-default CLI arguments still take precedence, and generated
+LitScout command text uses the effective LitScout settings.
 
 The report records `litscout_status` for each experiment. If the LitScout CLI is
 missing or a search/export command fails, that experiment is marked `skipped`

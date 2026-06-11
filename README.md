@@ -60,8 +60,9 @@ Agent runs read supported `Agent Config` defaults from the workbook or snapshot:
 `default_context_limit`, `default_history_limit`, `default_evidence_limit`,
 `default_litscout_sources`, `default_litscout_depth`, and
 `default_litscout_limit`. `suggestion_confidence_floor` controls the minimum
-confidence required before a draft is appended. Non-default CLI arguments still
-take precedence.
+confidence required before a draft is appended. Use
+`--suggestion-confidence-floor low|medium|high` on agent commands to override it
+for one run. Non-default CLI arguments still take precedence.
 
 ## LitScout Bridge
 

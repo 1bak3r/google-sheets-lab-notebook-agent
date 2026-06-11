@@ -1310,6 +1310,56 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
         self.assertEqual("low", run["append_agent_suggestions"][0]["confidence"])
 
+    def test_runtime_confidence_floor_overrides_agent_config_floor(self) -> None:
+        tables = low_confidence_agent_tables(confidence_floor="medium")
+
+        report = build_agent_report(
+            tables,
+            AgentRunConfig(
+                experiment_ids=("GEN-001",),
+                suggestion_confidence_floor="low",
+            ),
+        )
+
+        run = report["runs"][0]
+        self.assertEqual("ready", run["status"])
+        self.assertEqual("low", run["suggestion_confidence_floor"])
+        self.assertEqual("low", report["agent_config"]["effective_config"]["suggestion_confidence_floor"])
+        self.assertNotIn("suggestion_confidence_floor", report["agent_config"]["applied_overrides"])
+        self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+
+    def test_agent_run_cli_confidence_floor_overrides_agent_config_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = write_tables_to_workbook(
+                Path(tmpdir) / "low-confidence.xlsx",
+                low_confidence_agent_tables(confidence_floor="medium"),
+            )
+            output = Path(tmpdir) / "agent-report.json"
+
+            with patch("builtins.print"):
+                exit_code = main(
+                    [
+                        "agent-run",
+                        "--workbook",
+                        str(workbook_path),
+                        "--experiment-id",
+                        "GEN-001",
+                        "--suggestion-confidence-floor",
+                        "low",
+                        "--report-output",
+                        str(output),
+                    ]
+                )
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+            run = report["runs"][0]
+            self.assertEqual(0, exit_code)
+            self.assertEqual("ready", run["status"])
+            self.assertEqual("low", run["suggestion_confidence_floor"])
+            self.assertEqual("low", report["agent_config"]["effective_config"]["suggestion_confidence_floor"])
+            self.assertNotIn("suggestion_confidence_floor", report["agent_config"]["applied_overrides"])
+            self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
+
     def test_daily_review_selects_experiments_by_date_and_log_timestamp(self) -> None:
         tables = {
             "Experiments": [
@@ -2424,6 +2474,18 @@ def low_confidence_agent_tables(confidence_floor: str) -> dict[str, list[dict[st
             {"key": "suggestion_confidence_floor", "value": confidence_floor, "notes": ""},
         ],
     }
+
+
+def write_tables_to_workbook(path: Path, tables: dict[str, list[dict[str, object]]]) -> Path:
+    workbook_path = save_workbook(path, include_examples=False)
+    workbook = load_workbook(workbook_path)
+    for sheet_name, rows in tables.items():
+        worksheet = workbook[sheet_name]
+        headers = [cell.value for cell in worksheet[1]]
+        for row in rows:
+            worksheet.append([row.get(header, "") for header in headers])
+    workbook.save(workbook_path)
+    return workbook_path
 
 
 def validations_by_range(worksheet: object) -> dict[str, str]:

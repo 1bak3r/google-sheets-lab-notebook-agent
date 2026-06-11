@@ -25,6 +25,7 @@ from .sheets import (
 
 
 OPEN_SUGGESTION_STATUSES = {"draft", "accepted", "run_planned"}
+DEFAULT_SUGGESTION_CONFIDENCE_FLOOR = "low"
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class AgentRunConfig:
     context_limit: int = 5
     history_limit: int = 5
     evidence_limit: int = 3
-    suggestion_confidence_floor: str = "low"
+    suggestion_confidence_floor: str | None = None
     force: bool = False
     litscout_export: str | None = None
     run_litscout: bool = False
@@ -356,6 +357,11 @@ def effective_agent_run_config(
             continue
         if parsed != getattr(config, field):
             overrides[field] = parsed
+    if (
+        "suggestion_confidence_floor" not in overrides
+        and config.suggestion_confidence_floor is None
+    ):
+        overrides["suggestion_confidence_floor"] = DEFAULT_SUGGESTION_CONFIDENCE_FLOOR
     effective = replace(config, **overrides) if overrides else config
     return effective, {
         "schema": "lab-notebook-agent-run-config.v1",
