@@ -87,12 +87,13 @@ def litscout_works_to_evidence_rows(
     limit: int = 5,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    ranked = sorted(works, key=work_relevance_sort_key, reverse=True)
+    ranked = sorted(works, key=lambda work: work_relevance_sort_key(work, query), reverse=True)
     for index, work in enumerate(ranked[:limit], start=1):
         evidence_id = f"LIT-{slugify(experiment_id).upper().replace('/', '-')}-{index:03d}"
         title = str(work.get("title") or "").strip()
         concepts = concept_names(work)
-        tags = relevance_tags(" ".join([title, query, " ".join(concepts)]))
+        search_text = work_search_text(work)
+        tags = relevance_tags(search_text)
         rows.append(
             {
                 "evidence_id": evidence_id,
@@ -104,7 +105,7 @@ def litscout_works_to_evidence_rows(
                 "query": query,
                 "finding": build_evidence_finding(work, concepts),
                 "relevance_tags": ",".join(tags),
-                "confidence": evidence_confidence(title, concepts, query),
+                "confidence": evidence_confidence(work, query),
                 "notes": "Imported from LitScout export; review source text before treating as definitive.",
             }
         )
@@ -128,18 +129,81 @@ def evidence_rows_to_values(rows: list[dict[str, Any]]) -> list[list[Any]]:
     return [[row.get(header, "") for header in headers] for row in rows]
 
 
-def work_relevance_sort_key(work: dict[str, Any]) -> tuple[int, int, int]:
+def work_relevance_sort_key(work: dict[str, Any], query: str = "") -> tuple[float, int, int]:
+    text = work_search_text(work).lower()
     title = str(work.get("title") or "").lower()
-    concepts = " ".join(concept_names(work)).lower()
-    text = f"{title} {concepts}"
-    direct_hits = sum(
-        1
-        for term in ("emulsion", "surfactant", "particle size", "latex", "stability", "coagulum")
-        if term in text
-    )
+    query_terms = query_relevance_terms(query)
+    work_terms = set(re.findall(r"[a-zA-Z][a-zA-Z0-9\-]+", text))
+    overlap = len(query_terms & work_terms)
+
+    score = float(overlap)
+    if "emulsion polymerization" in text:
+        score += 8.0
+        if "emulsion polymerization" in title:
+            score += 4.0
+    elif {"emulsion", "polymerization"} <= work_terms:
+        score += 4.0
+    elif "polymerization" in query_terms and "polymerization" not in work_terms:
+        score -= 4.0
+
+    if "particle size" in text and {"particle", "size"} <= query_terms:
+        score += 4.0
+        if "particle size" in title:
+            score += 2.0
+    for term in ("latex", "coagulum", "coagulation", "nucleation", "surfactant", "initiator", "monomer", "feed"):
+        if term in query_terms and term in work_terms:
+            score += 2.0
+
+    if "polymerization" in query_terms and "polymerization" not in work_terms:
+        score -= generic_off_process_penalty(text)
+
     citations = int(work.get("cited_by_count") or 0)
     year = int(work.get("year") or 0)
-    return direct_hits, citations, year
+    return score, citations, year
+
+
+def work_search_text(work: dict[str, Any]) -> str:
+    return " ".join(
+        [
+            str(work.get("title") or ""),
+            str(work.get("source") or ""),
+            str(work.get("journal_or_collection") or ""),
+            flatten_text(work.get("abstract", "")),
+            flatten_text(work.get("summary", "")),
+            " ".join(concept_names(work)),
+        ]
+    )
+
+
+def query_relevance_terms(query: str) -> set[str]:
+    stopwords = {
+        "completed",
+        "experiment",
+        "record",
+        "recorded",
+        "run",
+        "sample",
+        "stage",
+        "timestamp",
+        "temperature",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9\-]+", query.lower())
+        if len(token) > 2 and token not in stopwords and not token.startswith("ep-")
+    }
+
+
+def generic_off_process_penalty(text: str) -> float:
+    penalty_terms = (
+        "biomedical",
+        "biocompatibility",
+        "nanoparticle",
+        "photocatalysis",
+        "pickering emulsion",
+        "pulmonary surfactant",
+    )
+    return float(sum(1 for term in penalty_terms if term in text))
 
 
 def author_names(work: dict[str, Any]) -> list[str]:
@@ -163,7 +227,13 @@ def concept_names(work: dict[str, Any]) -> list[str]:
                 names.append(concept)
     keywords = work.get("keywords") or []
     if isinstance(keywords, list):
-        names.extend(str(keyword) for keyword in keywords if keyword)
+        for keyword in keywords:
+            if isinstance(keyword, dict):
+                text = keyword.get("text") or keyword.get("display_name") or keyword.get("name")
+                if text:
+                    names.append(str(text))
+            elif keyword:
+                names.append(str(keyword))
     return names
 
 
@@ -185,16 +255,18 @@ def relevance_tags(text: str) -> list[str]:
         "particle_size": ("particle size", "particles", "latex"),
         "initiator": ("initiator", "persulfate", "radical"),
         "monomer": ("monomer", "acrylate", "methacrylate"),
-        "stability": ("stability", "coagulum", "coagulation", "colloidal"),
+        "stability": ("stability", "coagulative", "coagulum", "coagulation", "colloidal"),
         "feed": ("semibatch", "semi-batch", "feed"),
     }
     return [tag for tag, terms in tag_terms.items() if any(term in lowered for term in terms)]
 
 
-def evidence_confidence(title: str, concepts: list[str], query: str) -> str:
-    text = " ".join([title, " ".join(concepts)]).lower()
-    query_terms = {token for token in re.findall(r"[a-zA-Z][a-zA-Z0-9\-]+", query.lower()) if len(token) > 4}
+def evidence_confidence(work: dict[str, Any], query: str) -> str:
+    text = work_search_text(work).lower()
+    query_terms = query_relevance_terms(query)
     matches = sum(1 for token in query_terms if token in text)
+    if "emulsion polymerization" in text and matches >= 4:
+        return "high"
     if matches >= 3:
         return "medium"
     return "low"

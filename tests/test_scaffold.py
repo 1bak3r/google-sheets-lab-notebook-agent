@@ -698,6 +698,57 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("particle_size", rows[0]["relevance_tags"])
         self.assertEqual(11, len(evidence_rows_to_values(rows)[0]))
 
+    def test_litscout_ranking_prioritizes_query_specific_polymerization_evidence(self) -> None:
+        works = [
+            {
+                "title": "Non-Ionic Surfactants for Stabilization of Polymeric Nanoparticles for Biomedical Uses",
+                "service": "openalex",
+                "year": 2021,
+                "cited_by_count": 999,
+                "concepts": [
+                    {"display_name": "Pulmonary surfactant"},
+                    {"display_name": "Nanoparticle"},
+                    {"display_name": "Emulsion"},
+                    {"display_name": "Biocompatibility"},
+                ],
+            },
+            {
+                "title": "Coagulative nucleation and particle size distributions in emulsion polymerization",
+                "service": "openalex",
+                "year": 1984,
+                "cited_by_count": 194,
+                "concepts": [
+                    {"display_name": "Emulsion polymerization"},
+                    {"display_name": "Particle size"},
+                    {"display_name": "Nucleation"},
+                ],
+            },
+            {
+                "title": "Emulsion polymerization: From fundamental mechanisms to process developments",
+                "service": "openalex",
+                "year": 2004,
+                "cited_by_count": 323,
+                "keywords": [
+                    {"text": "Emulsion polymerization"},
+                    {"text": "Polymer chemistry"},
+                    {"text": "Latex stability"},
+                ],
+            },
+        ]
+        rows = litscout_works_to_evidence_rows(
+            works,
+            experiment_id="EP-010",
+            query="emulsion polymerization surfactant particle size coagulum latex feed",
+            limit=2,
+        )
+        titles = [row["title"] for row in rows]
+        self.assertEqual("Coagulative nucleation and particle size distributions in emulsion polymerization", titles[0])
+        self.assertIn("Emulsion polymerization: From fundamental mechanisms to process developments", titles)
+        self.assertNotIn("Non-Ionic Surfactants for Stabilization of Polymeric Nanoparticles for Biomedical Uses", titles)
+        self.assertNotIn("feed", rows[0]["relevance_tags"])
+        self.assertIn("stability", rows[0]["relevance_tags"])
+        self.assertEqual("high", rows[0]["confidence"])
+
     def test_recommendation_links_literature_evidence_ids(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
         entry["literature_evidence"] = [

@@ -67,7 +67,10 @@ litscout sessions export labnotebook/ep-001 --format json --json-array --output 
 ```
 
 Those exported works are intended to populate `Literature Evidence`, then feed
-back into `Agent Suggestions`.
+back into `Agent Suggestions`. Exported works are ranked against the experiment
+query before evidence rows are written, so exact process/topic matches such as
+emulsion polymerization, particle size, latex stability, feed, initiator, or
+surfactant outrank generic high-citation hits.
 
 Convert an exported LitScout session into rows for the `Literature Evidence`
 tab:
