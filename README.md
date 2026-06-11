@@ -190,10 +190,17 @@ Reviews row in one auditable payload:
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
   --workbook artifacts/lab_notebook_template.xlsx \
   --record examples/emulsion_polymerization_record.json \
+  --litscout-export artifacts/litscout-ep-010.json \
   --apply \
   --workbook-output artifacts/lab_notebook_recorded_daily.xlsx \
   --run-output artifacts/record-daily-agent-ep-010-applied.json
 ```
+
+Use `--litscout-export` with a reviewed LitScout JSON export, or
+`--run-litscout` when the local LitScout CLI is available, so the newly recorded
+experiment gets `Literature Evidence` rows before the follow-up suggestion is
+generated. The resulting `Agent Suggestions` row links those evidence IDs for
+human review.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \

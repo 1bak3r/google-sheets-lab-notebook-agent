@@ -331,6 +331,32 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, sum(1 for row in tables["Agent Suggestions"] if row["experiment_id"] == "EP-010"))
             self.assertTrue(any("EP-010" in str(row["selected_experiment_ids"]) for row in tables["Daily Reviews"]))
 
+    def test_recorded_daily_agent_apply_links_litscout_evidence_for_new_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            output_path = Path(tmpdir) / "recorded-daily-litscout.xlsx"
+            run = run_workbook_recorded_daily_agent(
+                workbook_path,
+                sample_experiment_record(),
+                AgentRunConfig(litscout_export=str(works_path)),
+                apply=True,
+                output_workbook=output_path,
+            )
+            agent_run = run["daily_agent_run"]["agent_report"]["runs"][0]
+            self.assertEqual("loaded_export", agent_run["litscout_status"]["status"])
+            self.assertEqual(
+                ["LIT-EP-010-001"],
+                agent_run["append_agent_suggestions"][0]["linked_evidence_ids"],
+            )
+            tables = load_workbook_tables(output_path)
+            self.assertEqual(
+                1,
+                sum(1 for row in tables["Literature Evidence"] if row["evidence_id"] == "LIT-EP-010-001"),
+            )
+            suggestion = next(row for row in tables["Agent Suggestions"] if row["experiment_id"] == "EP-010")
+            self.assertEqual("LIT-EP-010-001", suggestion["linked_evidence_ids"])
+
     def test_recorded_daily_agent_snapshot_emits_combined_google_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
@@ -360,6 +386,41 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("EP-010", appended_experiment["experiment_id"])
             self.assertEqual("needs_review", appended_experiment["status"])
             self.assertEqual([], run["apply_report"]["update_experiments"])
+
+    def test_recorded_daily_agent_snapshot_batches_litscout_evidence_for_new_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tables = load_workbook_tables(save_workbook(Path(tmpdir) / "template.xlsx"))
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            snapshot = snapshot_from_tables(
+                tables,
+                {
+                    "Experiments": 101,
+                    "Formulations": 103,
+                    "Daily Log": 104,
+                    "Results": 102,
+                    "Literature Evidence": 111,
+                    "Agent Suggestions": 222,
+                    "Daily Reviews": 333,
+                },
+            )
+            run = build_snapshot_recorded_daily_agent_run(
+                snapshot,
+                sample_experiment_record(),
+                AgentRunConfig(litscout_export=str(works_path)),
+            )
+            self.assertTrue(run["apply_audit"]["valid"], run["apply_audit"])
+            self.assertEqual(7, run["summary"]["apply_request_count"])
+            self.assertEqual(
+                [101, 103, 104, 102, 111, 222, 333],
+                [request["appendCells"]["sheetId"] for request in run["batch_update_requests"]],
+            )
+            agent_run = run["daily_agent_run"]["agent_report"]["runs"][0]
+            self.assertEqual("loaded_export", agent_run["litscout_status"]["status"])
+            self.assertEqual(
+                ["LIT-EP-010-001"],
+                agent_run["append_agent_suggestions"][0]["linked_evidence_ids"],
+            )
+            self.assertEqual("LIT-EP-010-001", agent_run["append_literature_evidence"][0]["evidence_id"])
 
     def test_material_audit_detects_emulsion_roles_and_gaps(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
