@@ -360,6 +360,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run-snapshot \
   --batch-output artifacts/live-sheet-batch-update.json
 ```
 
+The report records `litscout_status` for each experiment. If the LitScout CLI is
+missing or a search/export command fails, that experiment is marked `skipped`
+with `skip_reason: litscout_failed`, and no Literature Evidence or Agent
+Suggestions rows are emitted for it.
+
 ## 7. Audit Before Applying
 
 ```bash

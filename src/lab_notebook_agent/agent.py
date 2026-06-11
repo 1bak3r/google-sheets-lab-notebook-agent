@@ -75,13 +75,34 @@ def build_agent_report(
         existing_evidence = evidence_for_experiment(tables, experiment_id)
         new_evidence = []
         litscout_export_path = config.litscout_export
+        litscout_status = litscout_not_requested_status()
 
         if existing_evidence:
             entry["literature_evidence"] = existing_evidence
+            litscout_status = litscout_existing_evidence_status(existing_evidence, requested=config.run_litscout)
         else:
             candidate_works = works
             if config.run_litscout:
-                candidate_works, litscout_export_path = run_litscout_for_entry(entry, config)
+                try:
+                    candidate_works, litscout_export_path = run_litscout_for_entry(entry, config)
+                except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as exc:
+                    runs.append(
+                        {
+                            "experiment_id": experiment_id,
+                            "status": "skipped",
+                            "skip_reason": "litscout_failed",
+                            "litscout_query": query,
+                            "litscout_export": litscout_export_path or "",
+                            "litscout_status": litscout_failure_status(exc),
+                            "notebook_context_matches": notebook_matches,
+                            "append_literature_evidence": [],
+                            "append_agent_suggestions": [],
+                        }
+                    )
+                    continue
+                litscout_status = litscout_completed_status(litscout_export_path, candidate_works)
+            elif config.litscout_export:
+                litscout_status = litscout_loaded_export_status(config.litscout_export, candidate_works)
             if candidate_works:
                 new_evidence = litscout_works_to_evidence_rows(
                     candidate_works,
@@ -98,6 +119,7 @@ def build_agent_report(
                 "status": "ready",
                 "litscout_query": query,
                 "litscout_export": litscout_export_path or "",
+                "litscout_status": litscout_status,
                 "notebook_context_matches": notebook_matches,
                 "append_literature_evidence": rows_not_present(
                     new_evidence,
@@ -205,6 +227,57 @@ def run_litscout_for_entry(entry: dict[str, Any], config: AgentRunConfig) -> tup
         check=True,
     )
     return load_litscout_export(export_path), str(export_path)
+
+
+def litscout_not_requested_status() -> dict[str, Any]:
+    return {
+        "requested": False,
+        "status": "not_requested",
+        "works_count": 0,
+    }
+
+
+def litscout_loaded_export_status(export_path: str, works: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "requested": False,
+        "status": "loaded_export",
+        "export_path": export_path,
+        "works_count": len(works),
+    }
+
+
+def litscout_existing_evidence_status(evidence_rows: list[dict[str, Any]], requested: bool = False) -> dict[str, Any]:
+    return {
+        "requested": requested,
+        "status": "existing_evidence",
+        "evidence_count": len(evidence_rows),
+        "works_count": 0,
+    }
+
+
+def litscout_completed_status(export_path: str, works: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "requested": True,
+        "status": "completed",
+        "export_path": export_path,
+        "works_count": len(works),
+    }
+
+
+def litscout_failure_status(exc: Exception) -> dict[str, Any]:
+    status: dict[str, Any] = {
+        "requested": True,
+        "status": "failed",
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+        "works_count": 0,
+    }
+    if isinstance(exc, subprocess.CalledProcessError):
+        status["returncode"] = exc.returncode
+        status["command"] = " ".join(str(part) for part in exc.cmd) if isinstance(exc.cmd, (list, tuple)) else str(exc.cmd)
+    if isinstance(exc, FileNotFoundError):
+        status["message"] = "LitScout CLI was not found on PATH."
+    return status
 
 
 def selected_experiment_ids(
@@ -336,4 +409,10 @@ def summarize_runs(runs: list[dict[str, Any]]) -> dict[str, int]:
         "skipped": sum(1 for run in runs if run.get("status") == "skipped"),
         "evidence_rows_to_append": sum(len(run.get("append_literature_evidence", [])) for run in runs),
         "suggestion_rows_to_append": sum(len(run.get("append_agent_suggestions", [])) for run in runs),
+        "litscout_failures": sum(
+            1
+            for run in runs
+            if isinstance(run.get("litscout_status"), dict)
+            and run["litscout_status"].get("status") == "failed"
+        ),
     }

@@ -54,8 +54,8 @@ automation.
 
 ## LitScout Bridge
 
-The scaffold does not run literature retrieval automatically yet. The
-recommendation output includes reproducible commands like:
+The recommendation output includes reproducible commands for a manual LitScout
+round-trip:
 
 ```bash
 litscout search multi "emulsion polymerization particle size surfactant initiator" --sources openalex,crossref,semantic_scholar --depth light --limit 25 --save --session-name labnotebook/ep-001
@@ -87,6 +87,23 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
   --litscout-export artifacts/litscout-ep-001.json \
   --report-output artifacts/agent-run-ep-001.json
 ```
+
+When the `litscout` CLI is available, the agent can run the search/export step
+itself for experiments that do not already have `Literature Evidence` rows:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --experiment-id EP-001 \
+  --run-litscout \
+  --litscout-limit 8 \
+  --evidence-limit 3 \
+  --report-output artifacts/agent-run-ep-001-live-litscout.json
+```
+
+Each run records `litscout_status`. If the LitScout CLI is missing or returns a
+non-zero status, the report marks that experiment `skipped` with
+`skip_reason: litscout_failed` and does not append an ungrounded suggestion.
 
 Run the same agent as a daily notebook review. This processes experiments whose
 `Experiments.date` or `Daily Log.timestamp` starts with the requested date, and

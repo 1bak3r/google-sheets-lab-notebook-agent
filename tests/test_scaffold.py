@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -494,9 +495,84 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
             suggestion = report["runs"][0]["append_agent_suggestions"][0]
             self.assertEqual(["LIT-EP-001-001"], suggestion["linked_evidence_ids"])
+            self.assertEqual("loaded_export", report["runs"][0]["litscout_status"]["status"])
+            self.assertEqual(1, report["runs"][0]["litscout_status"]["works_count"])
             context_sheets = {row["sheet"] for row in report["runs"][0]["notebook_context_matches"]}
             self.assertIn("Master Reagents", context_sheets)
             self.assertIn("Process Knowledge", context_sheets)
+
+    def test_agent_report_can_run_litscout_and_records_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            calls = []
+
+            def fake_run(command: list[str], check: bool) -> None:
+                calls.append(command)
+                if command[:3] == ["litscout", "sessions", "export"]:
+                    output_path = Path(command[command.index("--output") + 1])
+                    write_fake_litscout_export(output_path)
+
+            with patch("lab_notebook_agent.agent.subprocess.run", side_effect=fake_run):
+                report = build_agent_report(
+                    load_workbook_tables(workbook_path),
+                    AgentRunConfig(
+                        experiment_ids=("EP-001",),
+                        run_litscout=True,
+                        artifacts_dir=tmpdir,
+                    ),
+                )
+
+            run = report["runs"][0]
+            self.assertEqual("ready", run["status"])
+            self.assertEqual("completed", run["litscout_status"]["status"])
+            self.assertEqual(1, run["litscout_status"]["works_count"])
+            self.assertTrue(run["litscout_export"].endswith("litscout-ep-001.json"))
+            self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
+            self.assertEqual(2, len(calls))
+            self.assertEqual(["litscout", "search", "multi"], calls[0][:3])
+
+    def test_agent_report_records_litscout_failure_without_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            with patch("lab_notebook_agent.agent.subprocess.run", side_effect=FileNotFoundError()):
+                report = build_agent_report(
+                    load_workbook_tables(workbook_path),
+                    AgentRunConfig(
+                        experiment_ids=("EP-001",),
+                        run_litscout=True,
+                        artifacts_dir=tmpdir,
+                    ),
+                )
+
+            run = report["runs"][0]
+            self.assertEqual("skipped", run["status"])
+            self.assertEqual("litscout_failed", run["skip_reason"])
+            self.assertEqual("failed", run["litscout_status"]["status"])
+            self.assertEqual("FileNotFoundError", run["litscout_status"]["error_type"])
+            self.assertEqual([], run["append_agent_suggestions"])
+            self.assertEqual(1, report["summary"]["litscout_failures"])
+            self.assertEqual(0, report["summary"]["suggestion_rows_to_append"])
+
+    def test_agent_report_records_litscout_command_failure_without_suggestion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            failure = subprocess.CalledProcessError(2, ["litscout", "search", "multi"])
+            with patch("lab_notebook_agent.agent.subprocess.run", side_effect=failure):
+                report = build_agent_report(
+                    load_workbook_tables(workbook_path),
+                    AgentRunConfig(
+                        experiment_ids=("EP-001",),
+                        run_litscout=True,
+                        artifacts_dir=tmpdir,
+                    ),
+                )
+
+            run = report["runs"][0]
+            self.assertEqual("skipped", run["status"])
+            self.assertEqual("litscout_failed", run["skip_reason"])
+            self.assertEqual(2, run["litscout_status"]["returncode"])
+            self.assertEqual("litscout search multi", run["litscout_status"]["command"])
+            self.assertEqual(0, report["summary"]["suggestion_rows_to_append"])
 
     def test_notebook_context_filters_current_experiment_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
