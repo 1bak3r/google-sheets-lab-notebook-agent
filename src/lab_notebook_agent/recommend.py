@@ -167,6 +167,11 @@ def extract_signals(entry: dict[str, Any]) -> set[str]:
                 signals.add("particle_size_high")
             if value is not None and "conversion" in measurement and value < 85:
                 signals.add("low_conversion")
+            if value is not None and "residual" in measurement and "monomer" in measurement and value > 1:
+                signals.add("residual_monomer_high")
+                signals.add("low_conversion")
+            if value is not None and ("polydispersity" in measurement or "pdi" in measurement) and value > 0.2:
+                signals.add("broad_psd")
     return signals
 
 
@@ -226,9 +231,9 @@ def literature_tags_for_row(row: dict[str, Any]) -> list[str]:
     ).lower()
     inferred = {
         "surfactant": ("surfactant", "sds", "anionic", "nonionic", "ionic"),
-        "particle_size": ("particle size", "particles", "dls", "diameter", "nucleation"),
+        "particle_size": ("particle size", "particles", "dls", "diameter", "nucleation", "pdi", "polydispersity"),
         "stability": ("stability", "coagulum", "coagulation", "colloidal", "latex"),
-        "initiator": ("initiator", "persulfate", "radical", "aps"),
+        "initiator": ("initiator", "persulfate", "radical", "aps", "residual monomer", "unreacted monomer"),
         "monomer": ("monomer", "acrylate", "methacrylate"),
         "feed": ("feed", "semibatch", "semi-batch", "starved"),
     }
@@ -285,12 +290,12 @@ def emulsion_polymerization_next_experiment(
         "The next run should make particle-size and stability changes attributable to one formulation axis."
     ]
 
-    if "particle_size_high" in signals:
+    if "particle_size_high" in signals or "broad_psd" in signals:
         changes.append(
-            "Add a particle-size arm that modestly increases effective surfactant level or slows monomer feed while leaving monomer composition fixed."
+            "Add a particle-size/distribution arm that modestly increases effective surfactant level or slows monomer feed while leaving monomer composition fixed."
         )
-        rationale_bits.append("The entry reports particle size above the 200-350 nm scaffold target window.")
-        expected.append("Particle size should shift downward or reveal whether surfactant/feed is not the controlling factor.")
+        rationale_bits.append("The entry reports particle size or distribution outside the first-pass scaffold target window.")
+        expected.append("Particle size or PDI should shift downward or reveal whether surfactant/feed is not the controlling factor.")
     if "coagulum" in signals or "instability" in signals:
         changes.append(
             "Add a stability arm that uses the same total surfactant active mass but compares ionic-only versus mixed ionic/nonionic surfactant package."
@@ -414,12 +419,12 @@ def build_emulsion_polymerization_plan(
             "rationale": "Provides a control for run-to-run variation before interpreting formulation changes.",
         }
     ]
-    if "particle_size_high" in signals:
+    if "particle_size_high" in signals or "broad_psd" in signals:
         variables.append(
             {
                 "factor": "surfactant_active_basis_or_feed_duration",
                 "levels": ["current surfactant/feed", "modestly higher surfactant active basis or slower monomer feed"],
-                "rationale": "Particle size above target suggests nucleation/stabilization or feed-rate limitation.",
+                "rationale": "Particle size or PDI above target suggests nucleation/stabilization or feed-rate limitation.",
             }
         )
     if "coagulum" in signals or "instability" in signals:
@@ -523,7 +528,7 @@ def build_emulsion_polymerization_plan(
 
 
 def emulsion_followup_focus(signals: set[str]) -> dict[str, Any]:
-    has_particle = "particle_size_high" in signals
+    has_particle = "particle_size_high" in signals or "broad_psd" in signals
     has_stability = "coagulum" in signals or "instability" in signals
     has_conversion = "low_conversion" in signals
     if has_conversion and not has_particle and not has_stability:
@@ -578,7 +583,7 @@ def emulsion_followup_focus(signals: set[str]) -> dict[str, Any]:
             "sheet_objective": "Follow up latex stability and conversion by isolating surfactant/feed and process-health controls.",
             "sheet_hypothesis": "Stability and conversion improve when surfactant/feed variables and initiator process health are isolated.",
             "acceptance_criteria": [
-                "Particle size moves toward the 200-350 nm target window when particle size is limiting.",
+                "Particle size moves toward the 200-350 nm target window and PDI decreases when particle distribution is limiting.",
                 "Coagulum mass decreases relative to the baseline repeat when stability is limiting.",
                 "Conversion moves above the 85% first-pass target so stability changes are interpretable.",
                 "No new safety or handling issue appears during feed, hold, or workup.",
@@ -597,7 +602,7 @@ def emulsion_followup_focus(signals: set[str]) -> dict[str, Any]:
             "sheet_objective": "Follow up latex particle size/coagulum by isolating surfactant package and feed profile.",
             "sheet_hypothesis": "Latex stability and particle size improve when surfactant/feed variables are isolated while core chemistry is held fixed.",
             "acceptance_criteria": [
-                "Particle size moves toward the 200-350 nm target window.",
+                "Particle size moves toward the 200-350 nm target window and PDI decreases when particle distribution is limiting.",
                 "Coagulum mass decreases relative to the baseline repeat.",
                 "Conversion remains high enough that stability changes are not confounded by incomplete polymerization.",
                 "No new safety or handling issue appears during feed, hold, or workup.",
@@ -666,7 +671,7 @@ def formulation_adjustments_for_followup(
     monomer = first_formulation_row(formulation, {"core_monomer", "shell_monomer", "comonomer", "monomer"})
     initiator = first_formulation_row(formulation, {"initiator"})
 
-    if "particle_size_high" in signals:
+    if "particle_size_high" in signals or "broad_psd" in signals:
         surfactant_basis = first_numeric_field(
             surfactant[1] if surfactant else {},
             ("mass_g", "moles_mmol", "volume_mL", "wt_percent"),
@@ -678,16 +683,16 @@ def formulation_adjustments_for_followup(
                 surfactant_basis,
                 1.15,
                 (
-                    "Particle size is above target; modestly increase surfactant "
-                    "active basis for the follow-up."
+                    "Particle size or PDI is above target; modestly increase "
+                    "surfactant active basis for the follow-up."
                 ),
             )
             if adjustment:
                 adjustments.append(adjustment)
         else:
             feed_reason = (
-                "Particle size is above target and no numeric surfactant basis "
-                "is available; slow the monomer feed for the follow-up."
+                "Particle size or PDI is above target and no numeric surfactant "
+                "basis is available; slow the monomer feed for the follow-up."
             )
             if "feed" in literature_tags:
                 feed_reason += " Linked evidence also flags feed/nucleation sensitivity."

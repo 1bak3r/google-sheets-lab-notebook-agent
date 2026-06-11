@@ -255,8 +255,8 @@ def relevance_tags(text: str) -> list[str]:
     lowered = text.lower()
     tag_terms = {
         "surfactant": ("surfactant", "anionic", "nonionic"),
-        "particle_size": ("particle size", "particles", "latex"),
-        "initiator": ("initiator", "persulfate", "radical"),
+        "particle_size": ("particle size", "particles", "latex", "pdi", "polydispersity"),
+        "initiator": ("initiator", "persulfate", "radical", "residual monomer", "unreacted monomer"),
         "monomer": ("monomer", "acrylate", "methacrylate"),
         "stability": ("stability", "coagulative", "coagulum", "coagulation", "colloidal"),
         "feed": ("semibatch", "semi-batch", "feed"),

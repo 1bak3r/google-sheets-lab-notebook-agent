@@ -647,11 +647,11 @@ def evidence_tags(row: dict[str, Any]) -> set[str]:
 def evidence_signal_tags(entry: dict[str, Any]) -> set[str]:
     signals = extract_signals(entry)
     tags: set[str] = set()
-    if "particle_size_high" in signals:
+    if "particle_size_high" in signals or "broad_psd" in signals:
         tags.add("particle_size")
     if "coagulum" in signals or "instability" in signals:
         tags.add("stability")
-    if "low_conversion" in signals:
+    if "low_conversion" in signals or "residual_monomer_high" in signals:
         tags.add("initiator")
     text = entry_query(entry).lower()
     if "surfactant" in text or "sds" in text:

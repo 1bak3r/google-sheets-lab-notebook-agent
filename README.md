@@ -164,6 +164,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary \
 The summary reports observations, normalized Results rows, issue tags,
 target-based result analysis, limiting metrics, material audit status, open
 suggestions, and next actions for each experiment selected on that date.
+For emulsion polymerization, target analysis treats residual monomer above the
+first-pass limit as a process-health/conversion signal and high PDI as a
+particle-distribution signal for surfactant/feed controls.
 Open-suggestion actions are status-aware: draft suggestions should be accepted
 or rejected, accepted suggestions should be materialized, and completed
 planned follow-ups should be marked `run_complete`. The combined daily agent

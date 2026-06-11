@@ -230,6 +230,39 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("below_target", limiting["conversion"]["status"])
         self.assertIn("Outcome limits", analysis["summary"])
 
+    def test_result_analysis_flags_residual_monomer_and_broad_pdi(self) -> None:
+        entry = {
+            "experiment_id": "EP-POLY",
+            "process_type": "emulsion polymerization",
+            "observations": [],
+            "results": [
+                {
+                    "sample_id": "EP-POLY-RM",
+                    "measurement_type": "residual monomer",
+                    "value": "1.8",
+                    "units": "%",
+                    "quality_flag": "observed",
+                },
+                {
+                    "sample_id": "EP-POLY-PDI",
+                    "measurement_type": "polydispersity index",
+                    "value": "0.28",
+                    "units": "",
+                    "quality_flag": "observed",
+                },
+            ],
+        }
+
+        analysis = build_result_analysis(entry)
+
+        self.assertIn("residual_monomer_high", analysis["signals"])
+        self.assertIn("low_conversion", analysis["signals"])
+        self.assertIn("broad_psd", analysis["signals"])
+        limiting = {row["metric_key"]: row for row in analysis["limiting_metrics"]}
+        self.assertEqual("above_target", limiting["residual_monomer"]["status"])
+        self.assertEqual("above_target", limiting["polydispersity_index"]["status"])
+        self.assertIn("process-health", " ".join(analysis["guidance"]))
+
     def test_rows_from_values_drops_blank_rows_and_preserves_headers(self) -> None:
         rows = rows_from_values(
             [
@@ -1144,6 +1177,29 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("particle_size", rows[0]["relevance_tags"])
         self.assertEqual(11, len(evidence_rows_to_values(rows)[0]))
 
+    def test_litscout_export_tags_residual_monomer_and_pdi_evidence(self) -> None:
+        works = [
+            {
+                "title": "Residual monomer and PDI control in acrylic emulsion polymerization",
+                "service": "openalex",
+                "year": 2024,
+                "concepts": [
+                    {"display_name": "Residual monomer"},
+                    {"display_name": "Polydispersity"},
+                    {"display_name": "Persulfate initiator"},
+                ],
+            }
+        ]
+
+        rows = litscout_works_to_evidence_rows(
+            works,
+            experiment_id="EP-001",
+            query="residual monomer PDI emulsion polymerization initiator particle size",
+        )
+
+        self.assertIn("initiator", rows[0]["relevance_tags"])
+        self.assertIn("particle_size", rows[0]["relevance_tags"])
+
     def test_litscout_ranking_prioritizes_query_specific_polymerization_evidence(self) -> None:
         works = [
             {
@@ -1355,6 +1411,40 @@ class ScaffoldTests(unittest.TestCase):
         planned_experiment = plan["sheet_rows"]["experiments"][0]
         self.assertIn("low conversion", planned_experiment["objective"])
         self.assertNotIn("coagulum", planned_experiment["objective"].lower())
+
+    def test_structured_emulsion_plan_treats_broad_pdi_as_distribution_signal(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        entry["observations"] = [
+            {
+                "timestamp": "2026-06-09T14:35:00",
+                "process_stage": "workup",
+                "observation": "Latex was smooth but DLS distribution was broad.",
+            }
+        ]
+        entry["results"] = [
+            {
+                "sample_id": "EP-001-PDI",
+                "measurement_type": "polydispersity index",
+                "value": "0.31",
+                "units": "",
+                "quality_flag": "observed",
+            }
+        ]
+        entry["formulation"][1]["mass_g"] = "0.20"
+
+        suggestion = build_recommendation(entry)
+
+        plan = suggestion["proposed_experiment_plan"]
+        self.assertIn("broad_psd", suggestion["result_analysis"]["signals"])
+        factors = [variable["factor"] for variable in plan["variables"]]
+        self.assertIn("surfactant_active_basis_or_feed_duration", factors)
+        surfactant_adjustment = next(
+            adjustment
+            for adjustment in plan["planned_formulation_adjustments"]
+            if adjustment["target_role"] == "surfactant" and adjustment["field"] == "mass_g"
+        )
+        self.assertEqual("0.23", surfactant_adjustment["proposed_value"])
+        self.assertIn("PDI", surfactant_adjustment["rationale"])
 
     def test_agent_report_appends_evidence_and_linked_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

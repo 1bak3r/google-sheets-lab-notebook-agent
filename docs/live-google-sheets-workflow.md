@@ -412,6 +412,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary \
 
 Review material gaps, measurements, target-based result-analysis summaries,
 limiting metrics, issue tags, and open suggestions before applying new rows.
+For emulsion polymerization, target analysis treats residual monomer above the
+first-pass limit as a process-health/conversion signal and high PDI as a
+particle-distribution signal for surfactant/feed controls.
 Open-suggestion next actions are status-aware: draft suggestions should be
 accepted or rejected, accepted suggestions should be materialized, and completed
 planned follow-ups should be marked `run_complete`. The combined daily agent
@@ -565,6 +568,7 @@ the proposed plan includes `literature_support` so reviewers can see which tags
 and findings influenced the follow-up.
 Each suggestion also includes `result_analysis`, and the proposed plan includes
 `result_support`, so target comparisons and limiting metrics are explicit.
+Residual monomer and PDI are included in those result signals when present.
 For emulsion polymerization, the proposed objective, hypothesis, variables, and
 acceptance criteria follow the detected particle-size, stability, or conversion
 signals instead of using one fixed follow-up template.

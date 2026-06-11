@@ -20,6 +20,18 @@ EMULSION_TARGETS: dict[str, dict[str, Any]] = {
         "units": "%",
         "guidance_low": "Check initiator freshness, purge quality, thermal hold, and chase strategy before interpreting particle-size changes.",
     },
+    "residual_monomer": {
+        "label": "residual monomer maximum",
+        "max": 1.0,
+        "units": "%",
+        "guidance_high": "Treat high residual monomer as a process-health limitation; verify initiator, purge, temperature profile, hold time, and chase strategy.",
+    },
+    "polydispersity_index": {
+        "label": "DLS PDI maximum",
+        "max": 0.2,
+        "units": "",
+        "guidance_high": "Treat broad particle-size distribution as a nucleation/stabilization signal; review surfactant package, seed/nucleation, feed duration, and sample prep.",
+    },
     "coagulum_mass": {
         "label": "coagulum mass maximum",
         "max": 0.1,
@@ -189,6 +201,10 @@ def signals_for_metric(metric: str, status: str) -> list[str]:
         return ["particle_size_low"]
     if metric == "conversion" and status == "below_target":
         return ["low_conversion"]
+    if metric == "residual_monomer" and status == "above_target":
+        return ["residual_monomer_high", "low_conversion"]
+    if metric == "polydispersity_index" and status == "above_target":
+        return ["broad_psd"]
     if metric == "coagulum_mass" and status == "above_target":
         return ["coagulum"]
     return []
@@ -198,7 +214,9 @@ def priority_for_metric(metric: str) -> int:
     return {
         "coagulum_mass": 1,
         "conversion": 2,
+        "residual_monomer": 2,
         "particle_size": 3,
+        "polydispersity_index": 4,
     }.get(metric, 50)
 
 
@@ -215,8 +233,12 @@ def qualitative_observation_signals(observations: list[dict[str, Any]]) -> list[
             signals.add("coagulum")
         if "low_conversion" in text or "low conversion" in text:
             signals.add("low_conversion")
+        if "residual_monomer" in text or "residual monomer" in text:
+            signals.add("residual_monomer_high")
         if "particle_size_high" in text or "particle size high" in text:
             signals.add("particle_size_high")
+        if "broad_psd" in text or "broad psd" in text or "high pdi" in text:
+            signals.add("broad_psd")
     return sorted(signals)
 
 

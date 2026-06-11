@@ -177,6 +177,14 @@ def metric_key(measurement_type: Any, units: Any = "") -> str:
         return "particle_size"
     if "conversion" in text:
         return "conversion"
+    if "residual" in text and "monomer" in text:
+        return "residual_monomer"
+    if "polydispersity" in text or "pdi" in text:
+        return "polydispersity_index"
+    if "tg" in text or "glass transition" in text:
+        return "Tg"
+    if "hold time" in text:
+        return "hold_time"
     if "coagulum" in text or "grit" in text:
         return "coagulum_mass"
     if "solids" in text:
