@@ -71,6 +71,7 @@ from lab_notebook_agent.recommend import build_recommendation, load_entry
 from lab_notebook_agent.recorded_daily_agent import (
     build_recorded_daily_agent_run,
     build_snapshot_recorded_daily_agent_run,
+    run_workbook_recorded_daily_agent,
 )
 from lab_notebook_agent.result_analysis import build_result_analysis
 from lab_notebook_agent.schema import SHEETS, workbook_contract
@@ -307,6 +308,28 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, run["summary"]["daily_review_rows_to_append"])
             self.assertEqual(2, run["record_report"]["summary"]["daily_log_rows_to_append"])
             self.assertEqual("EP-010", run["daily_agent_run"]["agent_report"]["runs"][0]["experiment_id"])
+
+    def test_recorded_daily_agent_apply_writes_combined_workbook_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output_path = Path(tmpdir) / "recorded-daily.xlsx"
+            run = run_workbook_recorded_daily_agent(
+                workbook_path,
+                sample_experiment_record(),
+                AgentRunConfig(),
+                apply=True,
+                output_workbook=output_path,
+            )
+            self.assertTrue(run["applied"])
+            tables = load_workbook_tables(output_path)
+            ep_010 = next(row for row in tables["Experiments"] if row["experiment_id"] == "EP-010")
+            self.assertEqual("needs_review", ep_010["status"])
+            self.assertIn("Daily review 2026-06-10", ep_010["summary"])
+            self.assertTrue(any(row["experiment_id"] == "EP-010" for row in tables["Formulations"]))
+            self.assertEqual(2, sum(1 for row in tables["Daily Log"] if row["experiment_id"] == "EP-010"))
+            self.assertEqual(3, sum(1 for row in tables["Results"] if row["experiment_id"] == "EP-010"))
+            self.assertEqual(1, sum(1 for row in tables["Agent Suggestions"] if row["experiment_id"] == "EP-010"))
+            self.assertTrue(any("EP-010" in str(row["selected_experiment_ids"]) for row in tables["Daily Reviews"]))
 
     def test_recorded_daily_agent_snapshot_emits_combined_google_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

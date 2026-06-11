@@ -50,7 +50,7 @@ from .notebook_search import search_notebook_tables
 from .planning import apply_plan_materialization_report_to_workbook, build_plan_materialization_report
 from .preflight import build_experiment_preflight_report
 from .recommend import build_recommendation, load_entry
-from .recorded_daily_agent import build_recorded_daily_agent_run, build_snapshot_recorded_daily_agent_run
+from .recorded_daily_agent import build_snapshot_recorded_daily_agent_run, run_workbook_recorded_daily_agent
 from .schema import workbook_contract
 from .search import LocalSemanticIndex, load_knowledge
 from .sheets import append_suggestion_to_workbook, save_entry_from_workbook, suggest_from_workbook
@@ -140,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     record_daily_parser.add_argument("--evidence-limit", type=int, default=3)
     record_daily_parser.add_argument("--artifacts-dir", default="artifacts")
     record_daily_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
+    record_daily_parser.add_argument("--apply", action="store_true", help="Append generated rows and updates to the workbook.")
+    record_daily_parser.add_argument("--workbook-output", help="Optional output .xlsx path for workbook apply mode. Defaults to in-place.")
     record_daily_parser.add_argument("--run-output", help="Optional full recorded daily run JSON path. Defaults to stdout.")
     record_daily_parser.add_argument("--record-output", help="Optional experiment record report JSON path.")
     record_daily_parser.add_argument("--daily-run-output", help="Optional projected daily agent run JSON path.")
@@ -627,8 +629,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.workbook:
             if args.audit_output or args.batch_output:
                 raise SystemExit("--audit-output and --batch-output require --snapshot so sheet IDs are available.")
-            run = build_recorded_daily_agent_run(load_workbook_tables(args.workbook), record, config)
+            run = run_workbook_recorded_daily_agent(
+                args.workbook,
+                record,
+                config,
+                apply=args.apply,
+                output_workbook=args.workbook_output,
+            )
         else:
+            if args.apply:
+                raise SystemExit("--apply is only available with --workbook. Use --batch-output for snapshots.")
             run = build_snapshot_recorded_daily_agent_run(load_sheet_snapshot(args.snapshot), record, config)
         write_recorded_daily_outputs(
             run,

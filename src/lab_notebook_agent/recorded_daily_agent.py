@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
-from .agent import AgentRunConfig
+from .agent import AgentRunConfig, suggestion_to_workbook_row
 from .daily_agent import build_daily_agent_run, build_daily_apply_report, empty_daily_agent_run
 from .experiment_record import build_experiment_record_report
 from .google_sheets import (
@@ -13,6 +14,7 @@ from .google_sheets import (
     snapshot_to_tables,
     validate_snapshot,
 )
+from .sheets import append_rows_to_workbook, load_workbook_tables, update_workbook_rows_by_key
 
 
 def build_recorded_daily_agent_run(
@@ -77,6 +79,72 @@ def build_snapshot_recorded_daily_agent_run(
     return run
 
 
+def run_workbook_recorded_daily_agent(
+    workbook_path: str | Path,
+    record: dict[str, Any],
+    config: AgentRunConfig,
+    apply: bool = False,
+    output_workbook: str | Path | None = None,
+) -> dict[str, Any]:
+    run = build_recorded_daily_agent_run(load_workbook_tables(workbook_path), record, config)
+    if apply:
+        apply_recorded_daily_agent_run_to_workbook(
+            workbook_path,
+            run,
+            output_workbook=output_workbook,
+        )
+    run["applied"] = bool(apply)
+    return run
+
+
+def apply_recorded_daily_agent_run_to_workbook(
+    workbook_path: str | Path,
+    run: dict[str, Any],
+    output_workbook: str | Path | None = None,
+) -> Path:
+    destination = Path(output_workbook).expanduser().resolve() if output_workbook else Path(workbook_path).expanduser().resolve()
+    current = Path(workbook_path).expanduser().resolve()
+    apply_report = run.get("apply_report", {})
+    for sheet_name, report_key in (
+        ("Master Reagents", "append_master_reagents"),
+        ("Experiments", "append_experiments"),
+        ("Formulations", "append_formulations"),
+        ("Daily Log", "append_daily_log"),
+        ("Results", "append_results"),
+    ):
+        rows = dict_rows(apply_report.get(report_key, []))
+        if rows:
+            append_rows_to_workbook(current, sheet_name, rows, destination)
+            current = destination
+
+    run_rows = dict_rows(apply_report.get("runs", []))
+    result_rows = nested_report_rows(run_rows, "append_results")
+    if result_rows:
+        append_rows_to_workbook(current, "Results", result_rows, destination)
+        current = destination
+    evidence_rows = nested_report_rows(run_rows, "append_literature_evidence")
+    if evidence_rows:
+        append_rows_to_workbook(current, "Literature Evidence", evidence_rows, destination)
+        current = destination
+    suggestion_rows = nested_report_rows(run_rows, "append_agent_suggestions")
+    if suggestion_rows:
+        append_rows_to_workbook(
+            current,
+            "Agent Suggestions",
+            [suggestion_to_workbook_row(row) for row in suggestion_rows],
+            destination,
+        )
+        current = destination
+    daily_review_rows = dict_rows(apply_report.get("append_daily_reviews", []))
+    if daily_review_rows:
+        append_rows_to_workbook(current, "Daily Reviews", daily_review_rows, destination)
+        current = destination
+    experiment_updates = dict_rows(apply_report.get("update_experiments", []))
+    if experiment_updates:
+        update_workbook_rows_by_key(current, "Experiments", experiment_updates, output_path=destination)
+    return destination
+
+
 def build_recorded_daily_apply_report(
     record_report: dict[str, Any],
     daily_run: dict[str, Any],
@@ -131,6 +199,17 @@ def merge_new_experiment_updates(
             continue
         remaining.append(update)
     return remaining
+
+
+def dict_rows(value: Any) -> list[dict[str, Any]]:
+    return [row for row in value or [] if isinstance(row, dict)]
+
+
+def nested_report_rows(runs: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    rows = []
+    for run in runs:
+        rows.extend(dict_rows(run.get(key, [])))
+    return rows
 
 
 def tables_with_record_report(

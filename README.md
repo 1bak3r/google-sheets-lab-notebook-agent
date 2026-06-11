@@ -188,6 +188,15 @@ Reviews row in one auditable payload:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --record examples/emulsion_polymerization_record.json \
+  --apply \
+  --workbook-output artifacts/lab_notebook_recorded_daily.xlsx \
+  --run-output artifacts/record-daily-agent-ep-010-applied.json
+```
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli record-daily-agent-run \
   --snapshot artifacts/live-sheet-snapshot.json \
   --record examples/emulsion_polymerization_record.json \
   --litscout-export artifacts/litscout-ep-010.json \
