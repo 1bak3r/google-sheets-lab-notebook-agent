@@ -371,7 +371,9 @@ the capture, report, audit, and optional apply in one command.
 
 Normalize structured Daily Log measurements and common free-text measurement
 phrases into appendable `Results` rows when the operator entered measurements
-directly in Daily Log:
+directly in Daily Log. Text extraction covers common process and polymer
+outcome notes including temperature, rpm, pH, solids, particle size, conversion,
+viscosity, coagulum mass, residual monomer, PDI, Tg, and hold time:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \

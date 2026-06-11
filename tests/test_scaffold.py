@@ -2116,6 +2116,36 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("0.4", by_type["coagulum mass"]["value"])
         self.assertTrue(all("observation text" in row["method"] for name, row in by_type.items() if name != "DLS particle size"))
 
+    def test_daily_log_results_extracts_polymer_specific_outcomes_from_text(self) -> None:
+        report = build_daily_log_results_report(
+            {
+                "Daily Log": [
+                    {
+                        "experiment_id": "EP-POLY",
+                        "timestamp": "2026-06-09T18:30:00",
+                        "process_stage": "post-test",
+                        "observation": (
+                            "Residual monomer 1.8%; PDI 0.12; Tg -18 C; "
+                            "thermal hold for 45 min."
+                        ),
+                    }
+                ],
+                "Results": [],
+            },
+            experiment_ids=("EP-POLY",),
+        )
+
+        rows = report["runs"][0]["append_results"]
+        by_type = {row["measurement_type"]: row for row in rows}
+        self.assertEqual(4, report["summary"]["result_rows_to_append"])
+        self.assertEqual("1.8", by_type["residual monomer"]["value"])
+        self.assertEqual("%", by_type["residual monomer"]["units"])
+        self.assertEqual("0.12", by_type["polydispersity index"]["value"])
+        self.assertEqual("-18", by_type["Tg"]["value"])
+        self.assertEqual("C", by_type["Tg"]["units"])
+        self.assertEqual("45", by_type["hold time"]["value"])
+        self.assertEqual("min", by_type["hold time"]["units"])
+
     def test_daily_log_results_apply_writes_results_rows_to_workbook(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

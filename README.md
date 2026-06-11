@@ -314,7 +314,8 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-formulations \
 Use `normalize-daily-log-results` to turn structured Daily Log measurements and
 common free-text phrases into normalized `Results` rows. It recognizes entries
 such as temperature, rpm, pH, solids, particle size, conversion, viscosity, and
-coagulum mass. Existing matching Results values are skipped so the operation can
+coagulum mass, plus polymer outcome notes such as residual monomer, PDI, Tg,
+and hold time. Existing matching Results values are skipped so the operation can
 be rerun safely:
 
 ```bash

@@ -122,6 +122,42 @@ TEXT_MEASUREMENT_PATTERNS: tuple[dict[str, Any], ...] = (
             r"\b(?:coagulum|coagulate|grit)\s*(?:mass|weight)?\s*(?:=|:|was|at|about|~)?\s*(\d+(?:\.\d+)?)\s*g\b",
         ),
     },
+    {
+        "field": "residual_monomer_percent",
+        "measurement_type": "residual monomer",
+        "units": "%",
+        "method": "Daily Log observation text",
+        "patterns": (
+            r"\b(?:residual monomer|residuals?|unreacted monomer)\s*(?:=|:|was|at|about|~)?\s*(\d+(?:\.\d+)?)\s*%",
+        ),
+    },
+    {
+        "field": "polydispersity_index",
+        "measurement_type": "polydispersity index",
+        "units": "",
+        "method": "Daily Log observation text",
+        "patterns": (
+            r"\b(?:PDI|polydispersity(?: index)?)\s*(?:=|:|was|at|about|~)?\s*(\d+(?:\.\d+)?)\b",
+        ),
+    },
+    {
+        "field": "Tg_C",
+        "measurement_type": "Tg",
+        "units": "C",
+        "method": "Daily Log observation text",
+        "patterns": (
+            r"\b(?:Tg|glass transition(?: temperature)?)\s*(?:=|:|was|at|about|~)?\s*(-?\d+(?:\.\d+)?)\s*(?:deg\s*C|degrees?\s*C|C\b)",
+        ),
+    },
+    {
+        "field": "hold_time_min",
+        "measurement_type": "hold time",
+        "units": "min",
+        "method": "Daily Log observation text",
+        "patterns": (
+            r"\b(?:hold time|held|thermal hold)\s*(?:=|:|was|for|about|~)?\s*(\d+(?:\.\d+)?)\s*(?:min|minutes?)\b",
+        ),
+    },
 )
 
 
