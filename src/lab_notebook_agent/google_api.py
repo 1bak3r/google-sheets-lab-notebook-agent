@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from time import sleep
+from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
 from .agent import AgentRunConfig, build_agent_report
@@ -246,6 +248,92 @@ def run_live_google_daily_agent(
         "apply_audit": daily_run.get("apply_audit", {}),
         "batch_update_requests": requests,
         "batch_update_response": response,
+    }
+
+
+def run_live_google_daily_agent_watch(
+    spreadsheet_id: str,
+    client: SheetsApiClient,
+    config: AgentRunConfig,
+    value_range: str = "A1:Z1000",
+    apply: bool = False,
+    iterations: int = 1,
+    interval_seconds: float = 60,
+    sleep_fn: Callable[[float], None] = sleep,
+) -> dict[str, Any]:
+    if iterations < 0:
+        raise ValueError("iterations must be >= 0; use 0 for continuous watch mode.")
+    if interval_seconds < 0:
+        raise ValueError("interval_seconds must be >= 0.")
+
+    runs: list[dict[str, Any]] = []
+    last_applied_signature = ""
+    iteration = 0
+    while iterations == 0 or iteration < iterations:
+        iteration += 1
+        run = run_live_google_daily_agent(
+            spreadsheet_id,
+            client,
+            config=config,
+            value_range=value_range,
+            apply=False,
+        )
+        requests = run.get("batch_update_requests", [])
+        signature = batch_request_signature(requests)
+        should_apply = bool(apply and requests)
+        if should_apply and signature == last_applied_signature:
+            run["applied"] = False
+            run["apply_skip_reason"] = "duplicate_batch"
+            run["batch_update_response"] = {}
+        elif should_apply:
+            run["batch_update_response"] = client.batch_update(spreadsheet_id, requests)
+            run["applied"] = True
+            last_applied_signature = signature
+        else:
+            run["applied"] = False
+            run["batch_update_response"] = {}
+        runs.append(
+            {
+                "iteration": iteration,
+                "applied": run.get("applied", False),
+                "apply_skip_reason": run.get("apply_skip_reason", ""),
+                "apply_audit_valid": run.get("apply_audit", {}).get("valid", False),
+                "request_count": len(requests),
+                "daily_summary": run.get("daily_summary", {}).get("summary", {}),
+                "daily_agent_run_summary": run.get("daily_agent_run", {}).get("summary", {}),
+                "run": run,
+            }
+        )
+        if iterations != 0 and iteration >= iterations:
+            break
+        if interval_seconds:
+            sleep_fn(interval_seconds)
+
+    return {
+        "schema": "lab-notebook-agent-live-google-daily-watch.v1",
+        "spreadsheet_id": spreadsheet_id,
+        "apply_requested": bool(apply),
+        "iterations_requested": iterations,
+        "interval_seconds": interval_seconds,
+        "summary": summarize_watch_runs(runs),
+        "runs": runs,
+    }
+
+
+def batch_request_signature(requests: list[dict[str, Any]]) -> str:
+    return json.dumps(requests, sort_keys=True, separators=(",", ":"))
+
+
+def summarize_watch_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "iteration_count": len(runs),
+        "applied_iterations": sum(1 for run in runs if run.get("applied")),
+        "duplicate_batches_skipped": sum(
+            1 for run in runs if run.get("apply_skip_reason") == "duplicate_batch"
+        ),
+        "total_request_count": sum(int(run.get("request_count", 0) or 0) for run in runs),
+        "last_apply_audit_valid": runs[-1].get("apply_audit_valid", False) if runs else False,
+        "last_request_count": int(runs[-1].get("request_count", 0) or 0) if runs else 0,
     }
 
 

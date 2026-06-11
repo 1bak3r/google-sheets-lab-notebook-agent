@@ -47,6 +47,7 @@ from lab_notebook_agent.google_api import (
     capture_snapshot_from_google_sheets,
     google_api_doctor,
     run_live_google_daily_agent,
+    run_live_google_daily_agent_watch,
     run_live_google_daily_log_results_normalization,
     run_live_google_agent,
     run_live_google_experiment_record,
@@ -2608,6 +2609,78 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(333, run["batch_update_requests"][3]["appendCells"]["sheetId"])
             self.assertEqual(101, run["batch_update_requests"][4]["updateCells"]["start"]["sheetId"])
             self.assertEqual(1, len(client.batch_updates))
+
+    def test_live_google_daily_agent_watch_skips_duplicate_batches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {
+                        "Experiments": 101,
+                        "Results": 102,
+                        "Literature Evidence": 111,
+                        "Agent Suggestions": 222,
+                        "Daily Reviews": 333,
+                    },
+                )
+            )
+
+            run = run_live_google_daily_agent_watch(
+                "spreadsheet-123",
+                client,
+                config=AgentRunConfig(review_date="2026-06-09", litscout_export=str(works_path)),
+                apply=True,
+                iterations=2,
+                interval_seconds=0,
+            )
+
+            self.assertEqual("lab-notebook-agent-live-google-daily-watch.v1", run["schema"])
+            self.assertEqual(2, run["summary"]["iteration_count"])
+            self.assertEqual(1, run["summary"]["applied_iterations"])
+            self.assertEqual(1, run["summary"]["duplicate_batches_skipped"])
+            self.assertEqual(1, len(client.batch_updates))
+            self.assertTrue(run["runs"][0]["applied"])
+            self.assertEqual("duplicate_batch", run["runs"][1]["apply_skip_reason"])
+
+    def test_live_google_daily_agent_watch_cli_writes_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            output = Path(tmpdir) / "watch.json"
+            client = FakeSheetsApiClient(
+                snapshot_from_tables(
+                    load_workbook_tables(workbook_path),
+                    {
+                        "Experiments": 101,
+                        "Results": 102,
+                        "Agent Suggestions": 222,
+                        "Daily Reviews": 333,
+                    },
+                )
+            )
+
+            with patch("lab_notebook_agent.google_api.GoogleSheetsApiClient.from_credentials", return_value=client):
+                exit_code = main(
+                    [
+                        "google-daily-agent-watch-live",
+                        "--spreadsheet-id",
+                        "spreadsheet-123",
+                        "--review-date",
+                        "2026-06-09",
+                        "--iterations",
+                        "1",
+                        "--interval-seconds",
+                        "0",
+                        "--run-output",
+                        str(output),
+                    ]
+                )
+
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("lab-notebook-agent-live-google-daily-watch.v1", report["schema"])
+            self.assertEqual(1, report["summary"]["iteration_count"])
 
     def test_live_google_formulation_normalization_applies_valid_batch_with_fake_client(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

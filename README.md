@@ -597,6 +597,21 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-daily-agent-run-live \
   --batch-output artifacts/live-google-agent-batch.json
 ```
 
+To poll the live sheet on an interval, use the bounded watch runner first:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-daily-agent-watch-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --review-date 2026-06-09 \
+  --iterations 3 \
+  --interval-seconds 60 \
+  --run-output artifacts/live-google-daily-watch.json
+```
+
+Add `--apply` only after the single-run audit path is valid. Use
+`--iterations 0` only when you deliberately want continuous polling; the watcher
+skips reapplying an identical batch after a successful apply.
+
 Add `--apply` only after the audit is valid. By default the direct API path uses
 Application Default Credentials; pass `--service-account-file path/to/key.json`
 for a service account that has edit access to the spreadsheet.
@@ -723,5 +738,5 @@ This scaffold builds the workbook contract, local recommendation loop, LitScout
 handoff/retrieval path, idempotent workbook runner, accepted-plan
 materialization, material starter rows, experiment preflight checks, combined
 daily review, Daily Log to Results normalization, formulation quantity
-normalization, role-aware material search, and Google Sheets snapshot runner. It
-does not yet watch a live spreadsheet continuously.
+normalization, role-aware material search, Google Sheets snapshot runner, direct
+live Google commands, and a bounded or continuous live daily polling runner.

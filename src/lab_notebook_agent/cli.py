@@ -34,6 +34,7 @@ from .google_api import (
     capture_snapshot_from_google_sheets,
     google_api_doctor,
     run_live_google_daily_agent,
+    run_live_google_daily_agent_watch,
     run_live_google_daily_log_results_normalization,
     run_live_google_agent,
     run_live_google_experiment_record,
@@ -466,6 +467,32 @@ def main(argv: list[str] | None = None) -> int:
     google_daily_agent_parser.add_argument("--report-output", help="Optional agent report JSON path.")
     google_daily_agent_parser.add_argument("--audit-output", help="Optional apply audit JSON path.")
     google_daily_agent_parser.add_argument("--batch-output", help="Optional batchUpdate requests JSON path.")
+
+    google_daily_watch_parser = subparsers.add_parser(
+        "google-daily-agent-watch-live",
+        help="Poll a live Google Sheet and run the daily notebook agent on each interval.",
+    )
+    google_daily_watch_parser.add_argument("--spreadsheet-id", required=True)
+    google_daily_watch_parser.add_argument("--service-account-file", help="Optional service account JSON file. Defaults to Application Default Credentials.")
+    google_daily_watch_parser.add_argument("--range", default="A1:Z1000")
+    google_daily_watch_parser.add_argument("--review-date", required=True, help="Review date as YYYY-MM-DD.")
+    google_daily_watch_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable.")
+    google_daily_watch_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    google_daily_watch_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
+    google_daily_watch_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
+    google_daily_watch_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
+    google_daily_watch_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
+    google_daily_watch_parser.add_argument("--litscout-depth", default="light")
+    google_daily_watch_parser.add_argument("--litscout-limit", type=int, default=8)
+    google_daily_watch_parser.add_argument("--evidence-limit", type=int, default=3)
+    add_suggestion_confidence_floor_argument(google_daily_watch_parser)
+    add_literature_requirement_arguments(google_daily_watch_parser)
+    google_daily_watch_parser.add_argument("--artifacts-dir", default="artifacts")
+    google_daily_watch_parser.add_argument("--force", action="store_true", help="Generate a new suggestion even if one already exists.")
+    google_daily_watch_parser.add_argument("--apply", action="store_true", help="Apply valid batchUpdate requests to the live spreadsheet.")
+    google_daily_watch_parser.add_argument("--iterations", type=int, default=1, help="Polling iterations to run. Use 0 for continuous watch mode.")
+    google_daily_watch_parser.add_argument("--interval-seconds", type=float, default=60, help="Seconds to wait between polling iterations.")
+    google_daily_watch_parser.add_argument("--run-output", help="Optional full watch run JSON path. Defaults to stdout.")
 
     google_normalize_formulations_parser = subparsers.add_parser(
         "google-normalize-formulations-live",
@@ -1162,6 +1189,35 @@ def main(argv: list[str] | None = None) -> int:
             audit_output=args.audit_output,
             batch_output=args.batch_output,
         )
+        return 0
+    if args.command == "google-daily-agent-watch-live":
+        client = build_google_client(args.service_account_file)
+        config = AgentRunConfig(
+            experiment_ids=tuple(args.experiment_id),
+            review_date=args.review_date,
+            context_limit=args.context_limit,
+            history_limit=args.history_limit,
+            evidence_limit=args.evidence_limit,
+            suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
+            force=args.force,
+            litscout_export=args.litscout_export,
+            run_litscout=args.run_litscout,
+            litscout_sources=args.litscout_sources,
+            litscout_depth=args.litscout_depth,
+            litscout_limit=args.litscout_limit,
+            artifacts_dir=args.artifacts_dir,
+        )
+        run = run_live_google_daily_agent_watch(
+            args.spreadsheet_id,
+            client,
+            config=config,
+            value_range=args.range,
+            apply=args.apply,
+            iterations=args.iterations,
+            interval_seconds=args.interval_seconds,
+        )
+        write_or_print_json(run, args.run_output)
         return 0
     if args.command == "google-normalize-formulations-live":
         client = build_google_client(args.service_account_file)

@@ -126,6 +126,22 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli google-daily-agent-run-live \
   --batch-output artifacts/live-google-agent-batch.json
 ```
 
+For interval polling, use the live watch runner. Start with a bounded run so the
+output can be inspected before any continuous process is left running:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli google-daily-agent-watch-live \
+  --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \
+  --review-date 2026-06-09 \
+  --iterations 3 \
+  --interval-seconds 60 \
+  --run-output artifacts/live-google-daily-watch.json
+```
+
+Use `--iterations 0` for continuous polling. Add `--apply` only after the
+single-run audit path is valid; after a successful apply, the watcher skips an
+identical next batch if the captured sheet has not changed yet.
+
 Formulation quantity normalization can also run directly against the live sheet:
 
 ```bash
