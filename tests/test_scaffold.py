@@ -118,6 +118,36 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn("N2:N1000", daily_review_validations)
             self.assertIn("ready_to_apply", daily_review_validations["N2:N1000"])
 
+    def test_daily_log_schema_keeps_existing_columns_as_prefix(self) -> None:
+        daily_log = next(spec for spec in SHEETS if spec.name == "Daily Log")
+        self.assertEqual(
+            [
+                "experiment_id",
+                "timestamp",
+                "process_stage",
+                "temperature_C",
+                "rpm",
+                "pH",
+                "solids_percent",
+                "particle_size_nm",
+                "conversion_percent",
+                "viscosity_cP",
+                "observation",
+                "issue_tags",
+                "attachments_url",
+            ],
+            list(daily_log.headers)[:13],
+        )
+        self.assertEqual(
+            [
+                "residual_monomer_percent",
+                "polydispersity_index",
+                "Tg_C",
+                "hold_time_min",
+            ],
+            list(daily_log.headers)[13:],
+        )
+
     def test_semantic_search_finds_emulsion_polymerization_material_roles(self) -> None:
         results = LocalSemanticIndex.from_default().search(
             "emulsion polymerization monomers initiator surfactant particle size",

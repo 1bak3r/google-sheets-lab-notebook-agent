@@ -42,6 +42,11 @@ batch creates missing contract tabs, writes header rows, freezes row 1, formats
 headers, autosizes columns, and adds controlled-vocabulary dropdowns through row
 1000. It does not seed example data into a live sheet.
 
+For existing live sheets, schema extensions must preserve current columns as a
+prefix. The setup batch rewrites header rows but does not move row data, so new
+Daily Log outcome fields are appended after the original observation and
+attachment columns to keep historical rows aligned.
+
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-doctor \
   --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 \

@@ -319,7 +319,9 @@ common free-text phrases into normalized `Results` rows. It recognizes entries
 such as temperature, rpm, pH, solids, particle size, conversion, viscosity, and
 coagulum mass, plus polymer outcome columns or notes such as residual monomer,
 PDI, Tg, and hold time. Existing matching Results values are skipped so the
-operation can be rerun safely:
+operation can be rerun safely. The structured polymer outcome columns are
+append-only after the original Daily Log observation and attachment columns so
+live setup refreshes do not shift historical row meanings:
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli normalize-daily-log-results \
