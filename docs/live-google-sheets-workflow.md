@@ -625,7 +625,10 @@ high and no numeric surfactant basis is available. Numeric surfactant bases can
 be `mass_g`, `moles_mmol`, stock `volume_mL`, or `wt_percent`. When one basis
 is adjusted, dependent copied quantity cells are cleared so they can be
 recalculated before execution. The materialized `Formulations` rows include the
-proposed value plus notes for human review before execution.
+proposed value plus notes for human review before execution. Materialization
+also uses matching `Master Reagents` rows to fill stock concentration fields and
+derive missing planned `mass_g`, `volume_mL`, or `moles_mmol` cells when the
+planned row has enough information.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli materialize-accepted-plans \

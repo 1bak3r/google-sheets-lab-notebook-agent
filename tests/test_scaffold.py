@@ -3113,6 +3113,60 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual("particle_size_nm", workbook["Results"]["C3"].value)
             self.assertEqual("run_planned", workbook["Agent Suggestions"]["M2"].value)
 
+    def test_accepted_suggestion_materialization_derives_stock_quantities_from_master_reagents(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {
+                    "reagent_id": "I-APS",
+                    "concentration": "0.1",
+                    "concentration_units": "M",
+                }
+            ],
+            "Experiments": [],
+            "Formulations": [],
+            "Results": [],
+            "Agent Suggestions": [
+                {
+                    "suggestion_id": "SUG-STOCK",
+                    "experiment_id": "EP-001",
+                    "proposed_experiment_id": "EP-001-FUP-001",
+                    "status": "accepted",
+                    "proposed_plan_json": json.dumps(
+                        {
+                            "suggested_experiment_id": "EP-001-FUP-001",
+                            "process_type": "emulsion polymerization",
+                            "sheet_rows": {
+                                "experiments": [
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "process_type": "emulsion polymerization",
+                                    }
+                                ],
+                                "formulations": [
+                                    {
+                                        "experiment_id": "EP-001-FUP-001",
+                                        "reagent_id": "I-APS",
+                                        "phase": "initiator feed",
+                                        "target_role": "initiator",
+                                        "volume_mL": "2.5",
+                                        "moles_mmol": "",
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                }
+            ],
+        }
+
+        report = build_plan_materialization_report(tables, planned_date="2026-06-10")
+
+        formulation = report["runs"][0]["append_formulations"][0]
+        self.assertEqual("0.1", formulation["concentration"])
+        self.assertEqual("M", formulation["concentration_units"])
+        self.assertEqual("0.25", formulation["moles_mmol"])
+        self.assertIn("Derived missing quantity cells", formulation["notes"])
+
     def test_accepted_suggestion_materialization_emits_google_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

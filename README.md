@@ -688,7 +688,10 @@ review notes when only qualitative action is defensible.
 After a human reviews a suggestion, set its `status` to `accepted` in
 `Agent Suggestions`. The materializer turns accepted suggestions into concrete
 notebook rows for `Experiments`, `Formulations`, and `Results`, then updates
-the original suggestion status to `run_planned`:
+the original suggestion status to `run_planned`. During materialization it also
+uses matching `Master Reagents` rows to fill reagent stock concentration fields
+and derive missing planned `mass_g`, `volume_mL`, or `moles_mmol` cells where
+the planned formulation has enough information:
 
 Agent reruns treat `draft`, `accepted`, and `run_planned` suggestions as active
 open work for that experiment. Set a suggestion to `rejected` or `run_complete`

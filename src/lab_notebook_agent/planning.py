@@ -6,10 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from .material_scaffold import formulation_key
+from .materials import calculate_formulation_row, nonblank
 from .sheets import append_rows_to_workbook, update_workbook_rows_by_key
 
 
 ACCEPTED_SUGGESTION_STATUSES = {"accepted"}
+MATERIALIZED_FORMULATION_QUANTITY_FIELDS = ("mass_g", "volume_mL", "moles_mmol")
 
 
 def build_plan_materialization_report(
@@ -26,6 +28,7 @@ def build_plan_materialization_report(
     }
     existing_result_keys = {result_row_key(row) for row in tables.get("Results", [])}
     existing_formulation_keys = {formulation_key(row) for row in tables.get("Formulations", [])}
+    reagent_lookup = master_reagent_lookup(tables)
     runs = []
 
     for suggestion_index, suggestion in enumerate(tables.get("Agent Suggestions", []), start=2):
@@ -64,7 +67,7 @@ def build_plan_materialization_report(
         ]
         formulation_rows = [
             row
-            for row in formulation_rows_from_plan(suggestion, plan)
+            for row in formulation_rows_from_plan(suggestion, plan, reagent_lookup)
             if formulation_key(row) not in existing_formulation_keys
         ]
         result_rows = [
@@ -205,7 +208,19 @@ def experiment_rows_from_plan(
     return rows
 
 
-def formulation_rows_from_plan(suggestion: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
+def master_reagent_lookup(tables: dict[str, list[dict[str, Any]]]) -> dict[str, dict[str, Any]]:
+    return {
+        str(row.get("reagent_id", "")).strip(): row
+        for row in tables.get("Master Reagents", [])
+        if isinstance(row, dict) and str(row.get("reagent_id", "")).strip()
+    }
+
+
+def formulation_rows_from_plan(
+    suggestion: dict[str, Any],
+    plan: dict[str, Any],
+    reagent_lookup: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     suggested_experiment_id = proposed_id_from_suggestion(suggestion, plan)
     sheet_rows = plan.get("sheet_rows", {}) if isinstance(plan.get("sheet_rows"), dict) else {}
     raw_rows = sheet_rows.get("formulations", [])
@@ -235,9 +250,60 @@ def formulation_rows_from_plan(suggestion: dict[str, Any], plan: dict[str, Any])
             "notes",
             f"Draft formulation row from accepted suggestion {suggestion.get('suggestion_id', '')}.",
         )
+        normalize_materialized_formulation_row(row, reagent_lookup or {})
         if row.get("reagent_id") and row.get("target_role"):
             rows.append(row)
     return rows
+
+
+def normalize_materialized_formulation_row(
+    row: dict[str, Any],
+    reagent_lookup: dict[str, dict[str, Any]],
+) -> None:
+    reagent = reagent_lookup.get(str(row.get("reagent_id", "")).strip())
+    if not reagent:
+        return
+    for field in ("concentration", "concentration_units"):
+        if not nonblank(row.get(field)) and nonblank(reagent.get(field)):
+            row[field] = reagent.get(field, "")
+
+    calculation_row = dict(row)
+    calculation_row["reagent"] = reagent
+    for field in (
+        "molecular_weight_g_mol",
+        "density_g_mL",
+        "purity_fraction",
+        "concentration",
+        "concentration_units",
+    ):
+        calculation_row.setdefault(f"reagent_{field}", reagent.get(field, ""))
+    calculation = calculate_formulation_row(calculation_row)
+    derived = calculation.get("derived", {}) if isinstance(calculation.get("derived"), dict) else {}
+    derived_fields = []
+    for field in MATERIALIZED_FORMULATION_QUANTITY_FIELDS:
+        if nonblank(row.get(field)) or field not in derived:
+            continue
+        row[field] = format_materialized_value(derived[field])
+        derived_fields.append(field)
+    if derived_fields:
+        append_materialization_note(
+            row,
+            "Derived missing quantity cells during materialization: "
+            + ", ".join(derived_fields)
+            + ". Verify before running.",
+        )
+
+
+def append_materialization_note(row: dict[str, Any], note: str) -> None:
+    existing = str(row.get("notes", "")).strip()
+    row["notes"] = f"{existing} {note}".strip() if existing else note
+
+
+def format_materialized_value(value: Any) -> str:
+    if isinstance(value, (int, float)):
+        text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+        return text or "0"
+    return str(value)
 
 
 def result_rows_from_plan(suggestion: dict[str, Any], plan: dict[str, Any]) -> list[dict[str, Any]]:
