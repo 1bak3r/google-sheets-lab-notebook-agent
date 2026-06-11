@@ -459,8 +459,9 @@ as monomer, initiator, surfactant, and aqueous phase. Existing `Master Reagents`
 rows are ranked with the same process-material search logic and reused when a
 role-compatible candidate exists; otherwise the report creates placeholder
 reagent rows that must be replaced with verified identities and properties.
-Use `--query` to bias candidate selection toward the specific chemistry or
-observed issue.
+Placeholder notes include process-specific examples, relevant Process Knowledge
+guidance, and critical Master Reagents fields to fill. Use `--query` to bias
+candidate selection toward the specific chemistry or observed issue.
 
 ```bash
 PYTHONPATH=src python3 -m lab_notebook_agent.cli scaffold-materials \

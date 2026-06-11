@@ -235,7 +235,9 @@ The `scaffold-materials` command uses the same ranked candidate signal when it
 creates starter formulation rows. Add `--query` to bias selection toward the
 planned chemistry or issue being investigated; semantic-only matches are
 reported by search but are not auto-selected for starter rows without a
-matching role/category.
+matching role/category. When placeholders are needed, their notes include
+process-specific examples, relevant Process Knowledge guidance, and critical
+Master Reagents fields to fill before use.
 
 Run a per-experiment preflight check when you need to see whether one notebook
 entry is ready for planning or result-driven review:

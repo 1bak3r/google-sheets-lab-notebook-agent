@@ -755,6 +755,12 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("initiator", roles)
         self.assertIn("surfactant", roles)
         self.assertIn("solvent", roles)
+        monomer_placeholder = next(row for row in report["append_master_reagents"] if row["reagent_id"] == "AUTO-EP-NEW-MONOMER")
+        self.assertIn("acrylate monomer", monomer_placeholder["notes"])
+        self.assertIn("molecular_weight_g_mol", monomer_placeholder["notes"])
+        scaffold_by_role = {row["role_group"]: row for row in report["role_scaffold"]}
+        self.assertIn("acrylate monomer", scaffold_by_role["monomer"]["examples"])
+        self.assertIn("molecular_weight_g_mol", scaffold_by_role["monomer"]["important_reagent_fields"])
 
     def test_material_scaffold_reuses_existing_master_reagents(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -816,6 +822,33 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual("M-BA", roles["monomer"]["selected_candidate"]["reagent_id"])
         self.assertIn("example_token_overlap", roles["monomer"]["selected_candidate"]["match_reasons"])
         self.assertEqual("append_placeholder_master_reagent", roles["initiator"]["action"])
+
+    def test_material_scaffold_uses_process_knowledge_for_placeholder_notes(self) -> None:
+        report = build_material_scaffold_report(
+            {
+                "Master Reagents": [],
+                "Formulations": [],
+                "Process Knowledge": [
+                    {
+                        "process_type": "emulsion polymerization",
+                        "material_role": "monomer",
+                        "typical_examples": "styrene, butyl acrylate",
+                        "guidance": "Select monomers around target Tg and latex stability.",
+                    }
+                ],
+            },
+            experiment_id="EP-KNOW",
+            process_type="emulsion polymerization",
+        )
+
+        scaffold_by_role = {row["role_group"]: row for row in report["role_scaffold"]}
+        monomer_placeholder = next(
+            row for row in report["append_master_reagents"] if row["reagent_id"] == "AUTO-EP-KNOW-MONOMER"
+        )
+        self.assertTrue(scaffold_by_role["monomer"]["process_knowledge_matches"])
+        self.assertIn("styrene", monomer_placeholder["notes"])
+        self.assertIn("butyl acrylate", monomer_placeholder["notes"])
+        self.assertIn("Select monomers", monomer_placeholder["notes"])
 
     def test_material_scaffold_snapshot_emits_google_batch_requests(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
