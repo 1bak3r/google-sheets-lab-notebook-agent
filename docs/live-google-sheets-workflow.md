@@ -368,6 +368,9 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-summary \
 
 Review material gaps, measurements, target-based result-analysis summaries,
 limiting metrics, issue tags, and open suggestions before applying new rows.
+Open-suggestion next actions are status-aware: draft suggestions should be
+accepted or rejected, accepted suggestions should be materialized, and completed
+planned follow-ups should be marked `run_complete`.
 
 To run the daily summary and suggestion agent together, use the combined daily
 agent command. It writes pending normalized Results rows, the same read-only

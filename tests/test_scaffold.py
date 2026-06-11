@@ -1298,6 +1298,47 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, report["summary"]["open_suggestion_count"])
             self.assertEqual("draft", report["experiments"][0]["open_suggestions"][0]["status"])
 
+    def test_daily_summary_guides_completed_planned_suggestion_closure(self) -> None:
+        report = build_daily_summary_report(
+            {
+                "Experiments": [
+                    {
+                        "experiment_id": "EP-001",
+                        "date": "2026-06-09",
+                        "process_type": "emulsion polymerization",
+                        "status": "complete",
+                    },
+                    {
+                        "experiment_id": "EP-001-FUP-001",
+                        "date": "2026-06-10",
+                        "process_type": "emulsion polymerization",
+                        "status": "complete",
+                    },
+                ],
+                "Formulations": [],
+                "Master Reagents": [],
+                "Daily Log": [],
+                "Results": [],
+                "Agent Suggestions": [
+                    {
+                        "suggestion_id": "SUG-EP-001",
+                        "experiment_id": "EP-001",
+                        "recommendation_type": "next_experiment",
+                        "proposed_experiment_id": "EP-001-FUP-001",
+                        "confidence": "medium",
+                        "status": "run_planned",
+                    }
+                ],
+            },
+            review_date="2026-06-09",
+        )
+        experiment = report["experiments"][0]
+        self.assertEqual("complete", experiment["open_suggestions"][0]["proposed_experiment_status"])
+        self.assertTrue(
+            any("run_complete" in action and "SUG-EP-001" in action for action in experiment["next_actions"]),
+            experiment["next_actions"],
+        )
+
     def test_daily_log_results_normalizes_structured_observations(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")

@@ -363,7 +363,7 @@ def daily_experiment_next_step(experiment_id: str, review: dict[str, Any], run: 
     if int(preflight_summary.get("fail_count", 0) or 0) > 0 and next_actions:
         return next_actions[0]
     if daily_experiment_count(experiment_id, run, "append_agent_suggestions"):
-        return "Review draft Agent Suggestions and accept, reject, or revise the follow-up plan."
+        return "Review draft Agent Suggestions and set status to accepted or rejected before materialization."
     if daily_experiment_count(experiment_id, run, "append_results"):
         return "Review normalized Daily Log measurements in Results."
     if daily_experiment_count(experiment_id, run, "append_literature_evidence"):
