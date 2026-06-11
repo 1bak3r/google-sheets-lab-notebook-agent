@@ -157,6 +157,7 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
         "moles_mmol": numeric_value(row.get("moles_mmol")),
         "molecular_weight_g_mol": numeric_reagent_property(row, "molecular_weight_g_mol"),
         "density_g_mL": numeric_reagent_property(row, "density_g_mL"),
+        "purity_fraction": numeric_reagent_fraction(row, "purity_fraction"),
     }
     derived: dict[str, float] = {}
 
@@ -165,6 +166,7 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
     moles_mmol = observed["moles_mmol"]
     molecular_weight = observed["molecular_weight_g_mol"]
     density = observed["density_g_mL"]
+    purity = observed["purity_fraction"] or 1.0
 
     if mass_g is None and volume_mL is not None and density is not None:
         mass_g = volume_mL * density
@@ -173,10 +175,16 @@ def calculate_formulation_row(row: dict[str, Any]) -> dict[str, Any]:
         volume_mL = mass_g / density
         derived["volume_mL"] = round(volume_mL, 6)
     if moles_mmol is None and mass_g is not None and molecular_weight is not None:
-        moles_mmol = (mass_g / molecular_weight) * 1000
+        active_mass_g = mass_g * purity
+        if purity != 1.0:
+            derived["active_mass_g"] = round(active_mass_g, 6)
+        moles_mmol = (active_mass_g / molecular_weight) * 1000
         derived["moles_mmol"] = round(moles_mmol, 6)
     if mass_g is None and moles_mmol is not None and molecular_weight is not None:
-        mass_g = (moles_mmol / 1000) * molecular_weight
+        active_mass_g = (moles_mmol / 1000) * molecular_weight
+        mass_g = active_mass_g / purity
+        if purity != 1.0:
+            derived["active_mass_g"] = round(active_mass_g, 6)
         derived["mass_g"] = round(mass_g, 6)
         if volume_mL is None and density is not None:
             volume_mL = mass_g / density
@@ -206,6 +214,34 @@ def numeric_reagent_property(row: dict[str, Any], field: str) -> float | None:
         or numeric_value(row.get(f"reagent_{field}"))
         or numeric_value((row.get("reagent") or {}).get(field))
     )
+
+
+def numeric_reagent_fraction(row: dict[str, Any], field: str) -> float | None:
+    return (
+        numeric_fraction_value(row.get(field))
+        or numeric_fraction_value(row.get(f"reagent_{field}"))
+        or numeric_fraction_value((row.get("reagent") or {}).get(field))
+    )
+
+
+def numeric_fraction_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if 0 < number <= 1 else None
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    if text.endswith("%"):
+        try:
+            percentage = float(text[:-1].strip())
+        except ValueError:
+            return None
+        fraction = percentage / 100
+        return fraction if 0 < fraction <= 1 else None
+    number = numeric_value(text)
+    return number if number is not None and 0 < number <= 1 else None
 
 
 def numeric_value(value: Any) -> float | None:

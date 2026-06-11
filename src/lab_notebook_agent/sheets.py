@@ -119,7 +119,14 @@ def enrich_formulation_row(row: dict[str, Any], reagents_by_id: dict[str, dict[s
     reagent = reagents_by_id.get(reagent_id)
     if reagent:
         enriched["reagent"] = reagent
-        for key in ("name", "common_name", "category", "molecular_weight_g_mol", "density_g_mL"):
+        for key in (
+            "name",
+            "common_name",
+            "category",
+            "molecular_weight_g_mol",
+            "density_g_mL",
+            "purity_fraction",
+        ):
             if key in reagent and f"reagent_{key}" not in enriched:
                 enriched[f"reagent_{key}"] = reagent[key]
     return enriched

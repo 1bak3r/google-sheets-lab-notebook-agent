@@ -644,6 +644,40 @@ class ScaffoldTests(unittest.TestCase):
         self.assertAlmostEqual(13.446, calculation["derived"]["moles_mmol"], places=3)
         self.assertEqual([], calculation["missing_for_calculations"])
 
+    def test_formulation_calculation_uses_purity_for_active_moles(self) -> None:
+        calculation = calculate_formulation_row(
+            {
+                "reagent_id": "M-PURITY",
+                "target_role": "core_monomer",
+                "mass_g": "10",
+                "reagent_molecular_weight_g_mol": "100",
+                "reagent_density_g_mL": "1.25",
+                "reagent_purity_fraction": "0.8",
+            }
+        )
+
+        self.assertEqual(0.8, calculation["observed"]["purity_fraction"])
+        self.assertEqual(8, calculation["derived"]["active_mass_g"])
+        self.assertEqual(80, calculation["derived"]["moles_mmol"])
+        self.assertEqual(8, calculation["derived"]["volume_mL"])
+
+    def test_formulation_calculation_uses_purity_for_gross_mass_from_moles(self) -> None:
+        calculation = calculate_formulation_row(
+            {
+                "reagent_id": "M-PURITY",
+                "target_role": "core_monomer",
+                "moles_mmol": "80",
+                "reagent_molecular_weight_g_mol": "100",
+                "reagent_density_g_mL": "1.25",
+                "reagent_purity_fraction": "80%",
+            }
+        )
+
+        self.assertEqual(0.8, calculation["observed"]["purity_fraction"])
+        self.assertEqual(8, calculation["derived"]["active_mass_g"])
+        self.assertEqual(10, calculation["derived"]["mass_g"])
+        self.assertEqual(8, calculation["derived"]["volume_mL"])
+
     def test_formulation_normalization_derives_missing_cells(self) -> None:
         tables = {
             "Master Reagents": [
@@ -667,6 +701,38 @@ class ScaffoldTests(unittest.TestCase):
         updates = {row["field"]: row["value"] for row in report["runs"][0]["update_formulations"]}
         self.assertEqual("9.52381", updates["volume_mL"])
         self.assertEqual("64.028685", updates["moles_mmol"])
+
+    def test_formulation_normalization_uses_master_reagent_purity(self) -> None:
+        tables = {
+            "Master Reagents": [
+                {
+                    "reagent_id": "M-PURITY",
+                    "molecular_weight_g_mol": "100",
+                    "density_g_mL": "1.25",
+                    "purity_fraction": "0.8",
+                },
+            ],
+            "Formulations": [
+                {
+                    "experiment_id": "EP-001",
+                    "reagent_id": "M-PURITY",
+                    "phase": "monomer feed",
+                    "target_role": "core_monomer",
+                    "mass_g": "10",
+                    "volume_mL": "",
+                    "moles_mmol": "",
+                }
+            ],
+        }
+
+        report = build_formulation_normalization_report(tables, experiment_ids=("EP-001",))
+
+        updates = {row["field"]: row["value"] for row in report["runs"][0]["update_formulations"]}
+        calculation = report["runs"][0]["calculation"]
+        self.assertEqual(0.8, calculation["observed"]["purity_fraction"])
+        self.assertEqual(8, calculation["derived"]["active_mass_g"])
+        self.assertEqual("8", updates["volume_mL"])
+        self.assertEqual("80", updates["moles_mmol"])
 
     def test_formulation_normalization_derives_wt_percent_from_mass_total(self) -> None:
         tables = {

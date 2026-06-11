@@ -128,7 +128,7 @@ def enrich_formulation_with_reagent(
     reagent = reagent_lookup.get(str(row.get("reagent_id", "")).strip())
     if reagent:
         enriched["reagent"] = reagent
-        for field in ("molecular_weight_g_mol", "density_g_mL"):
+        for field in ("molecular_weight_g_mol", "density_g_mL", "purity_fraction"):
             enriched.setdefault(f"reagent_{field}", reagent.get(field, ""))
     return enriched
 
@@ -167,7 +167,7 @@ def formulation_update(row: dict[str, Any], row_number: int, field: str, value: 
         "key_value": experiment_id,
         "field": field,
         "value": format_derived_value(value),
-        "reason": "Derived from existing formulation quantity and Master Reagents physical properties.",
+        "reason": "Derived from existing formulation quantity and Master Reagents properties.",
     }
 
 
