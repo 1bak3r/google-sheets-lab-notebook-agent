@@ -67,12 +67,40 @@ EXPERIMENT_STATUS = (
     "abandoned",
 )
 
+PROCESS_STAGES = (
+    "setup",
+    "seed",
+    "feed",
+    "hold",
+    "chase",
+    "workup",
+    "sampling",
+    "test",
+    "cleanup",
+)
+
+RESULT_QUALITY_FLAGS = (
+    "planned",
+    "observed",
+    "ok",
+    "suspect",
+    "repeat",
+    "failed",
+)
+
 SUGGESTION_STATUS = (
     "draft",
     "accepted",
     "rejected",
     "run_planned",
     "run_complete",
+)
+
+DAILY_REVIEW_STATUS = (
+    "needs_attention",
+    "ready_to_apply",
+    "ready_with_warnings",
+    "no_action",
 )
 
 SHEETS: tuple[SheetSpec, ...] = (
@@ -362,7 +390,10 @@ SHEETS: tuple[SheetSpec, ...] = (
         + tuple(("reagent_category", value, "Master Reagents category.") for value in REAGENT_CATEGORIES)
         + tuple(("formulation_role", value, "Formulations target role.") for value in FORMULATION_ROLES)
         + tuple(("experiment_status", value, "Experiments status.") for value in EXPERIMENT_STATUS)
-        + tuple(("suggestion_status", value, "Agent Suggestions status.") for value in SUGGESTION_STATUS),
+        + tuple(("process_stage", value, "Daily Log process stage.") for value in PROCESS_STAGES)
+        + tuple(("result_quality_flag", value, "Results quality flag.") for value in RESULT_QUALITY_FLAGS)
+        + tuple(("suggestion_status", value, "Agent Suggestions status.") for value in SUGGESTION_STATUS)
+        + tuple(("daily_review_status", value, "Daily Reviews status.") for value in DAILY_REVIEW_STATUS),
     ),
     SheetSpec(
         name="Agent Config",
@@ -412,6 +443,9 @@ def workbook_contract() -> dict[str, object]:
             "reagent_category": list(REAGENT_CATEGORIES),
             "formulation_role": list(FORMULATION_ROLES),
             "experiment_status": list(EXPERIMENT_STATUS),
+            "process_stage": list(PROCESS_STAGES),
+            "result_quality_flag": list(RESULT_QUALITY_FLAGS),
             "suggestion_status": list(SUGGESTION_STATUS),
+            "daily_review_status": list(DAILY_REVIEW_STATUS),
         },
     }

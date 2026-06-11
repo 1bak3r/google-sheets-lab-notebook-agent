@@ -8,10 +8,13 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .schema import (
+    DAILY_REVIEW_STATUS,
     EXPERIMENT_STATUS,
     FORMULATION_ROLES,
+    PROCESS_STAGES,
     PROCESS_TYPES,
     REAGENT_CATEGORIES,
+    RESULT_QUALITY_FLAGS,
     SHEETS,
     SUGGESTION_STATUS,
 )
@@ -70,8 +73,11 @@ def add_validations(workbook: Workbook) -> None:
     validations = {
         "Master Reagents": {"D": REAGENT_CATEGORIES},
         "Experiments": {"D": PROCESS_TYPES, "I": EXPERIMENT_STATUS},
+        "Daily Log": {"C": PROCESS_STAGES},
         "Formulations": {"D": FORMULATION_ROLES},
+        "Results": {"I": RESULT_QUALITY_FLAGS},
         "Agent Suggestions": {"M": SUGGESTION_STATUS},
+        "Daily Reviews": {"N": DAILY_REVIEW_STATUS},
     }
     for sheet_name, columns in validations.items():
         worksheet = workbook[sheet_name]

@@ -49,7 +49,9 @@ automation.
   including structured proposed-plan JSON for accepted follow-ups.
 - `Daily Reviews`: one compact status row per daily agent run.
 - `Process Knowledge`: compact process priors used for semantic lookup.
-- `Controlled Vocab`: dropdown values shared by tabs.
+- `Controlled Vocab`: dropdown values shared by tabs, including process types,
+  reagent categories, formulation roles, process stages, result quality flags,
+  suggestion statuses, and daily review statuses.
 - `Agent Config`: model, retrieval, and safety settings.
 
 ## LitScout Bridge

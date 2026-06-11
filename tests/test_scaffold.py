@@ -83,6 +83,22 @@ class ScaffoldTests(unittest.TestCase):
                 headers = [cell.value for cell in worksheet[1]]
                 self.assertEqual(list(spec.headers), headers)
 
+    def test_workbook_template_validates_controlled_vocab_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(output)
+            daily_log_validations = validations_by_range(workbook["Daily Log"])
+            results_validations = validations_by_range(workbook["Results"])
+            daily_review_validations = validations_by_range(workbook["Daily Reviews"])
+            self.assertIn("C2:C1000", daily_log_validations)
+            self.assertIn("setup", daily_log_validations["C2:C1000"])
+            self.assertIn("test", daily_log_validations["C2:C1000"])
+            self.assertIn("I2:I1000", results_validations)
+            self.assertIn("observed", results_validations["I2:I1000"])
+            self.assertIn("planned", results_validations["I2:I1000"])
+            self.assertIn("N2:N1000", daily_review_validations)
+            self.assertIn("ready_to_apply", daily_review_validations["N2:N1000"])
+
     def test_semantic_search_finds_emulsion_polymerization_material_roles(self) -> None:
         results = LocalSemanticIndex.from_default().search(
             "emulsion polymerization monomers initiator surfactant particle size",
@@ -157,6 +173,9 @@ class ScaffoldTests(unittest.TestCase):
         sheet_names = [sheet["name"] for sheet in contract["sheets"]]
         self.assertEqual([sheet.name for sheet in SHEETS], sheet_names)
         self.assertIn("emulsion polymerization", contract["controlled_vocab"]["process_type"])
+        self.assertIn("feed", contract["controlled_vocab"]["process_stage"])
+        self.assertIn("observed", contract["controlled_vocab"]["result_quality_flag"])
+        self.assertIn("ready_to_apply", contract["controlled_vocab"]["daily_review_status"])
 
     def test_suggestion_includes_litscout_commands(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
@@ -1365,6 +1384,13 @@ def mark_first_suggestion_accepted(path: Path) -> None:
     status_column = headers.index("status") + 1
     worksheet.cell(row=2, column=status_column, value="accepted")
     workbook.save(path)
+
+
+def validations_by_range(worksheet: object) -> dict[str, str]:
+    return {
+        str(validation.sqref): str(validation.formula1)
+        for validation in worksheet.data_validations.dataValidation
+    }
 
 
 class FakeSheetsApiClient:
