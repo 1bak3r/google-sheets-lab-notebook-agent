@@ -258,7 +258,10 @@ The same `--review-date YYYY-MM-DD` filter is available for
 Agent run reports also include `notebook_context_matches`: notebook-wide search
 hits related to the run query, excluding the current experiment's own
 experiment/log/formulation/result rows where possible. Tune with
-`--context-limit`; use `--context-limit 0` to disable this context block.
+`--context-limit`; use `--context-limit 0` to disable this context block. Same
+process prior-result memory is controlled separately with `--history-limit`;
+use `--history-limit 0` when the suggestion should ignore prior experiment
+benchmarks.
 
 Apply that run to a workbook copy:
 

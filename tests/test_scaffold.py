@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -43,7 +44,7 @@ from lab_notebook_agent.google_api import (
     run_live_google_formulation_normalization,
     run_live_google_plan_materialization,
 )
-from lab_notebook_agent.cli import parse_sheet_id_args
+from lab_notebook_agent.cli import main, parse_sheet_id_args
 from lab_notebook_agent.litscout import evidence_rows_to_values, litscout_works_to_evidence_rows
 from lab_notebook_agent.material_scaffold import (
     apply_material_scaffold_report_to_workbook,
@@ -567,6 +568,62 @@ class ScaffoldTests(unittest.TestCase):
             self.assertIn("Notebook history", suggestion["rationale"])
             self.assertEqual(1, suggestion["historical_context"]["prior_experiment_count"])
             self.assertEqual("EP-000", suggestion["proposed_experiment_plan"]["history_support"]["prior_experiments"][0]["experiment_id"])
+
+    def test_agent_run_cli_history_limit_can_disable_prior_results(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            workbook = load_workbook(workbook_path)
+            experiments = workbook["Experiments"]
+            experiments.append(
+                [
+                    "EP-000",
+                    "2026-06-01",
+                    "SABER CCSP",
+                    "emulsion polymerization",
+                    "Baseline particle size screen.",
+                    "",
+                    "",
+                    "",
+                    "complete",
+                    "",
+                    "Lower particle size but stable latex.",
+                ]
+            )
+            workbook["Results"].append(
+                [
+                    "EP-000",
+                    "EP-000-L1",
+                    "DLS particle size",
+                    "intensity average",
+                    "240",
+                    "nm",
+                    "post-feed",
+                    "1",
+                    "ok",
+                    "Within target range.",
+                ]
+            )
+            workbook.save(workbook_path)
+            output = Path(tmpdir) / "agent-report.json"
+            with patch("builtins.print"):
+                exit_code = main(
+                    [
+                        "agent-run",
+                        "--workbook",
+                        str(workbook_path),
+                        "--experiment-id",
+                        "EP-001",
+                        "--history-limit",
+                        "0",
+                        "--report-output",
+                        str(output),
+                    ]
+                )
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual(0, report["runs"][0]["historical_context"]["prior_experiment_count"])
+            suggestion = report["runs"][0]["append_agent_suggestions"][0]
+            self.assertEqual(0, suggestion["proposed_experiment_plan"]["history_support"]["prior_experiment_count"])
 
     def test_agent_report_can_run_litscout_and_records_status(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

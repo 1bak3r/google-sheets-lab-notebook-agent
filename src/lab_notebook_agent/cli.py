@@ -132,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     daily_agent_parser.add_argument("--review-date", required=True, help="Review date as YYYY-MM-DD.")
     daily_agent_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable. Defaults to date-selected experiments.")
     daily_agent_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    daily_agent_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
     daily_agent_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
     daily_agent_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for each experiment that lacks evidence.")
     daily_agent_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
@@ -193,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     agent_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable. Defaults to all non-abandoned experiments.")
     agent_parser.add_argument("--review-date", help="Only process experiments dated/logged on YYYY-MM-DD unless experiment IDs are provided.")
     agent_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    agent_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
     agent_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
     agent_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for each experiment that lacks evidence.")
     agent_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
@@ -221,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     snapshot_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable.")
     snapshot_parser.add_argument("--review-date", help="Only process experiments dated/logged on YYYY-MM-DD unless experiment IDs are provided.")
     snapshot_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    snapshot_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
     snapshot_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
     snapshot_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for each experiment that lacks evidence.")
     snapshot_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
@@ -271,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
     google_agent_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable.")
     google_agent_parser.add_argument("--review-date", help="Only process experiments dated/logged on YYYY-MM-DD unless experiment IDs are provided.")
     google_agent_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    google_agent_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
     google_agent_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
     google_agent_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
     google_agent_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
@@ -296,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     google_daily_agent_parser.add_argument("--review-date", required=True, help="Review date as YYYY-MM-DD.")
     google_daily_agent_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable.")
     google_daily_agent_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    google_daily_agent_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
     google_daily_agent_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
     google_daily_agent_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
     google_daily_agent_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
@@ -533,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_ids=tuple(args.experiment_id),
             review_date=args.review_date,
             context_limit=args.context_limit,
+            history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             force=args.force,
             litscout_export=args.litscout_export,
@@ -613,6 +619,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_ids=tuple(args.experiment_id),
             review_date=args.review_date,
             context_limit=args.context_limit,
+            history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             force=args.force,
             litscout_export=args.litscout_export,
@@ -661,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_ids=tuple(args.experiment_id),
             review_date=args.review_date,
             context_limit=args.context_limit,
+            history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             force=args.force,
             litscout_export=args.litscout_export,
@@ -783,6 +791,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_ids=tuple(args.experiment_id),
             review_date=args.review_date,
             context_limit=args.context_limit,
+            history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             force=args.force,
             litscout_export=args.litscout_export,
@@ -815,6 +824,7 @@ def main(argv: list[str] | None = None) -> int:
             experiment_ids=tuple(args.experiment_id),
             review_date=args.review_date,
             context_limit=args.context_limit,
+            history_limit=args.history_limit,
             evidence_limit=args.evidence_limit,
             force=args.force,
             litscout_export=args.litscout_export,

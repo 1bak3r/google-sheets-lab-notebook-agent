@@ -289,6 +289,11 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli daily-agent-run \
   --batch-output artifacts/live-sheet-batch-update.json
 ```
 
+Use `--history-limit N` on `daily-agent-run`, `agent-run-snapshot`, and the
+live Google agent commands to control how many same-process prior experiments
+are used as result benchmarks. Use `--history-limit 0` to disable this notebook
+memory block for a run.
+
 Proceed with the batch output only if `artifacts/live-sheet-apply-audit.json`
 has `"valid": true`. The snapshot must include the `Experiments` and
 `Daily Reviews` sheet IDs. If Daily Log measurements normalize into Results, it
