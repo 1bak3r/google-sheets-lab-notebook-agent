@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .search import SearchResult, flatten_text
+from .search import LocalSemanticIndex, SearchResult, flatten_text
 
 
 def slugify(value: str) -> str:
@@ -17,8 +17,10 @@ def build_litscout_query(entry: dict[str, Any], knowledge_results: list[SearchRe
     pieces = [
         str(entry.get("process_type", "")),
         str(entry.get("objective", "")),
+        str(entry.get("hypothesis", "")),
         flatten_text(entry.get("observations", "")),
         flatten_text(entry.get("results", "")),
+        flatten_text(entry.get("formulation", "")),
     ]
     for result in knowledge_results or []:
         record = result.record
@@ -76,10 +78,26 @@ def build_litscout_commands(
 
 
 def load_litscout_export(path: str | Path) -> list[dict[str, Any]]:
-    with Path(path).expanduser().open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
+    source = Path(path).expanduser()
+    text = source.read_text(encoding="utf-8")
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        rows = []
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"LitScout export is not valid JSON or NDJSON at line {line_number}.") from exc
+            if isinstance(row, dict):
+                rows.append(row)
+        if rows:
+            return rows
+        raise ValueError("LitScout export must be a JSON array or newline-delimited JSON objects.")
     if not isinstance(data, list):
-        raise ValueError("LitScout export must be a JSON array.")
+        raise ValueError("LitScout export must be a JSON array or newline-delimited JSON objects.")
     return [row for row in data if isinstance(row, dict)]
 
 
@@ -90,13 +108,15 @@ def litscout_works_to_evidence_rows(
     limit: int = 5,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    ranked = sorted(works, key=lambda work: work_relevance_sort_key(work, query), reverse=True)
-    for index, work in enumerate(ranked[:limit], start=1):
+    semantic_scores = litscout_work_semantic_score_map(works, query)
+    ranked = ranked_litscout_work_items(works, query)
+    for index, (source_index, work) in enumerate(ranked[:limit], start=1):
         evidence_id = f"LIT-{slugify(experiment_id).upper().replace('/', '-')}-{index:03d}"
         title = str(work.get("title") or "").strip()
         concepts = concept_names(work)
         search_text = work_search_text(work)
         tags = relevance_tags(search_text)
+        semantic_score = semantic_scores.get(work_record_id(work, source_index), 0.0)
         rows.append(
             {
                 "evidence_id": evidence_id,
@@ -109,10 +129,107 @@ def litscout_works_to_evidence_rows(
                 "finding": build_evidence_finding(work, concepts),
                 "relevance_tags": ",".join(tags),
                 "confidence": evidence_confidence(work, query),
-                "notes": "Imported from LitScout export; review source text before treating as definitive.",
+                "notes": (
+                    "Imported from LitScout export; review source text before treating as definitive. "
+                    f"Local semantic rerank score: {semantic_score:.4f}."
+                ),
             }
         )
     return rows
+
+
+def ranked_litscout_works(works: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    return [work for _, work in ranked_litscout_work_items(works, query)]
+
+
+def ranked_litscout_work_items(works: list[dict[str, Any]], query: str) -> list[tuple[int, dict[str, Any]]]:
+    semantic_scores = litscout_work_semantic_score_map(works, query)
+    indexed = [(index, work) for index, work in enumerate(works) if isinstance(work, dict)]
+    indexed.sort(
+        key=lambda item: litscout_work_sort_key(
+            item[1],
+            query,
+            semantic_scores.get(work_record_id(item[1], item[0]), 0.0),
+            item[0],
+        ),
+        reverse=True,
+    )
+    return indexed
+
+
+def semantic_litscout_work_matches(
+    works: list[dict[str, Any]],
+    query: str,
+    k: int = 5,
+) -> list[dict[str, Any]]:
+    if k <= 0:
+        return []
+    records = litscout_work_records(works)
+    if not records:
+        return []
+    results = LocalSemanticIndex(records).search(query, k=min(k, len(records)))
+    return [
+        {
+            "work_id": result.record["record_id"],
+            "title": result.record.get("title", ""),
+            "source": result.record.get("source", ""),
+            "year": result.record.get("year", ""),
+            "score": round(result.score, 4),
+        }
+        for result in results
+    ]
+
+
+def litscout_work_semantic_score_map(works: list[dict[str, Any]], query: str) -> dict[str, float]:
+    records = litscout_work_records(works)
+    if not records:
+        return {}
+    results = LocalSemanticIndex(records).search(query, k=len(records))
+    return {str(result.record["record_id"]): result.score for result in results}
+
+
+def litscout_work_records(works: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    records = []
+    for index, work in enumerate(works):
+        if not isinstance(work, dict):
+            continue
+        records.append(
+            {
+                "record_id": work_record_id(work, index),
+                "title": work.get("title", ""),
+                "source": work.get("service") or work.get("source") or "litscout",
+                "year": work.get("year") or publication_year(work),
+                "journal_or_collection": work.get("journal_or_collection", ""),
+                "abstract": work.get("abstract", ""),
+                "summary": work.get("summary", ""),
+                "concepts": concept_names(work),
+                "search_text": work_search_text(work),
+            }
+        )
+    return records
+
+
+def work_record_id(work: dict[str, Any], index: int) -> str:
+    identity = (
+        work.get("id")
+        or work.get("primary_id")
+        or work.get("doi")
+        or work.get("url")
+        or work.get("title")
+        or f"work-{index}"
+    )
+    return f"{index}:{identity}"
+
+
+def litscout_work_sort_key(
+    work: dict[str, Any],
+    query: str,
+    semantic_score: float,
+    index: int,
+) -> tuple[float, float, float, int, int, int]:
+    lexical_score, citations, year = work_relevance_sort_key(work, query)
+    combined_score = lexical_score + (10.0 * semantic_score)
+    return combined_score, semantic_score, lexical_score, citations, year, -index
 
 
 def evidence_rows_to_values(rows: list[dict[str, Any]]) -> list[list[Any]]:

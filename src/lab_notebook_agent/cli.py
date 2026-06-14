@@ -44,7 +44,12 @@ from .google_api import (
     run_live_google_recorded_daily_agent,
     run_live_google_setup,
 )
-from .litscout import evidence_rows_to_values, litscout_works_to_evidence_rows, load_litscout_export
+from .litscout import (
+    evidence_rows_to_values,
+    litscout_works_to_evidence_rows,
+    load_litscout_export,
+    semantic_litscout_work_matches,
+)
 from .material_scaffold import apply_material_scaffold_report_to_workbook, build_material_scaffold_report
 from .material_search import build_process_material_search_report
 from .materials import audit_experiment_materials
@@ -272,6 +277,15 @@ def main(argv: list[str] | None = None) -> int:
     evidence_parser.add_argument("--limit", type=int, default=5)
     evidence_parser.add_argument("--values", action="store_true", help="Emit Sheets-ready values instead of row dictionaries.")
     evidence_parser.add_argument("--output", help="Optional output JSON path. Defaults to stdout.")
+
+    litscout_semantic_parser = subparsers.add_parser(
+        "litscout-semantic-search",
+        help="Semantically search a LitScout JSON export with the local notebook index.",
+    )
+    litscout_semantic_parser.add_argument("--input", required=True, help="LitScout JSON array export.")
+    litscout_semantic_parser.add_argument("query")
+    litscout_semantic_parser.add_argument("-k", type=int, default=5)
+    litscout_semantic_parser.add_argument("--output", help="Optional output JSON path. Defaults to stdout.")
 
     agent_parser = subparsers.add_parser("agent-run", help="Run the workbook-backed lab notebook agent.")
     agent_parser.add_argument("--workbook", required=True, help="Lab notebook .xlsx file.")
@@ -886,6 +900,10 @@ def main(argv: list[str] | None = None) -> int:
         rows = litscout_works_to_evidence_rows(works, args.experiment_id, args.query, limit=args.limit)
         payload = evidence_rows_to_values(rows) if args.values else rows
         write_or_print_json(payload, args.output)
+        return 0
+    if args.command == "litscout-semantic-search":
+        works = load_litscout_export(args.input)
+        write_or_print_json(semantic_litscout_work_matches(works, args.query, k=args.k), args.output)
         return 0
     if args.command == "agent-run":
         config = AgentRunConfig(

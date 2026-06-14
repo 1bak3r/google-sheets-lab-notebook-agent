@@ -12,6 +12,7 @@ from .litscout import (
     litscout_works_to_evidence_rows,
     load_litscout_export,
     query_relevance_terms,
+    semantic_litscout_work_matches,
     slugify,
 )
 from .notebook_search import search_notebook_tables
@@ -94,7 +95,8 @@ def build_agent_report(
             continue
 
         entry = build_experiment_entry_from_tables(tables, experiment_id)
-        query = build_litscout_query(entry)
+        knowledge_matches = index.search(entry_query(entry), k=4)
+        query = build_litscout_query(entry, knowledge_matches)
         notebook_matches = notebook_context_matches(tables, query, experiment_id, limit=config.context_limit)
         historical_context = build_historical_result_context(tables, experiment_id, limit=config.history_limit)
         entry["historical_context"] = historical_context
@@ -105,6 +107,7 @@ def build_agent_report(
         new_evidence = []
         litscout_export_path = config.litscout_export
         litscout_status = litscout_not_requested_status()
+        litscout_semantic_matches: list[dict[str, Any]] = []
 
         if existing_evidence:
             selected_evidence = select_literature_evidence_for_entry(
@@ -114,12 +117,18 @@ def build_agent_report(
                 limit=config.evidence_limit,
             )
             entry["literature_evidence"] = selected_evidence
+            litscout_semantic_matches = semantic_literature_evidence_matches(
+                entry,
+                existing_evidence,
+                query=query,
+                limit=config.evidence_limit,
+            )
             litscout_status = litscout_existing_evidence_status(existing_evidence, requested=config.run_litscout)
         else:
             candidate_works = works
             if config.run_litscout:
                 try:
-                    candidate_works, litscout_export_path = run_litscout_for_entry(entry, config)
+                    candidate_works, litscout_export_path = run_litscout_for_entry(entry, config, query=query)
                 except (FileNotFoundError, subprocess.CalledProcessError, ValueError) as exc:
                     runs.append(
                         {
@@ -129,6 +138,7 @@ def build_agent_report(
                             "litscout_query": query,
                             "litscout_export": litscout_export_path or "",
                             "litscout_status": litscout_failure_status(exc),
+                            "litscout_semantic_matches": [],
                             "notebook_context_matches": notebook_matches,
                             "historical_context": historical_context,
                             "append_literature_evidence": [],
@@ -140,6 +150,7 @@ def build_agent_report(
             elif config.litscout_export:
                 litscout_status = litscout_loaded_export_status(config.litscout_export, candidate_works)
             if candidate_works:
+                work_matches = semantic_litscout_work_matches(candidate_works, query, k=config.evidence_limit)
                 new_evidence = litscout_works_to_evidence_rows(
                     candidate_works,
                     experiment_id=experiment_id,
@@ -153,6 +164,14 @@ def build_agent_report(
                     limit=config.evidence_limit,
                 )
                 entry["literature_evidence"] = selected_evidence
+                litscout_semantic_matches = semantic_literature_evidence_matches(
+                    entry,
+                    new_evidence,
+                    query=query,
+                    limit=config.evidence_limit,
+                )
+                if not litscout_semantic_matches:
+                    litscout_semantic_matches = work_matches
 
         evidence_rows_to_append = rows_not_present(
             new_evidence,
@@ -169,6 +188,7 @@ def build_agent_report(
                     "litscout_query": query,
                     "litscout_export": litscout_export_path or "",
                     "litscout_status": litscout_status,
+                    "litscout_semantic_matches": litscout_semantic_matches,
                     "notebook_context_matches": notebook_matches,
                     "historical_context": historical_context,
                     "selected_literature_evidence_ids": evidence_ids(selected_evidence),
@@ -193,6 +213,7 @@ def build_agent_report(
                     "litscout_query": query,
                     "litscout_export": litscout_export_path or "",
                     "litscout_status": litscout_status,
+                    "litscout_semantic_matches": litscout_semantic_matches,
                     "notebook_context_matches": notebook_matches,
                     "historical_context": historical_context,
                     "selected_literature_evidence_ids": evidence_ids(selected_evidence),
@@ -210,6 +231,7 @@ def build_agent_report(
                 "litscout_query": query,
                 "litscout_export": litscout_export_path or "",
                 "litscout_status": litscout_status,
+                "litscout_semantic_matches": litscout_semantic_matches,
                 "notebook_context_matches": notebook_matches,
                 "historical_context": historical_context,
                 "selected_literature_evidence_ids": evidence_ids(selected_evidence),
@@ -280,11 +302,15 @@ def apply_agent_report_to_workbook(
     return destination
 
 
-def run_litscout_for_entry(entry: dict[str, Any], config: AgentRunConfig) -> tuple[list[dict[str, Any]], str]:
+def run_litscout_for_entry(
+    entry: dict[str, Any],
+    config: AgentRunConfig,
+    query: str | None = None,
+) -> tuple[list[dict[str, Any]], str]:
     experiment_id = str(entry.get("experiment_id", "experiment"))
     experiment_slug = slugify(experiment_id)
     session_name = f"labnotebook/{experiment_slug}"
-    query = build_litscout_query(entry)
+    query = query or build_litscout_query(entry)
     artifacts_dir = Path(config.artifacts_dir).expanduser().resolve()
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     export_path = artifacts_dir / f"litscout-{experiment_slug}.json"
@@ -609,9 +635,15 @@ def select_literature_evidence_for_entry(
 ) -> list[dict[str, Any]]:
     if limit <= 0:
         return []
+    semantic_scores = semantic_literature_evidence_score_map(entry, evidence_rows, query)
     scored = [
         (
-            evidence_relevance_score(row, entry, query),
+            evidence_relevance_score(
+                row,
+                entry,
+                query,
+                semantic_scores.get(literature_evidence_record_id(row, index), 0.0),
+            ),
             -index,
             row,
         )
@@ -622,7 +654,72 @@ def select_literature_evidence_for_entry(
     return [row for _, _, row in scored[:limit]]
 
 
-def evidence_relevance_score(row: dict[str, Any], entry: dict[str, Any], query: str) -> float:
+def semantic_literature_evidence_matches(
+    entry: dict[str, Any],
+    evidence_rows: list[dict[str, Any]],
+    query: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    records = literature_evidence_records(evidence_rows)
+    if not records:
+        return []
+    semantic_query = " ".join([query, entry_query(entry)])
+    results = LocalSemanticIndex(records).search(semantic_query, k=min(limit, len(records)))
+    return [
+        {
+            "evidence_id": result.record.get("evidence_id", ""),
+            "title": result.record.get("title", ""),
+            "source": result.record.get("source", ""),
+            "confidence": result.record.get("confidence", ""),
+            "score": round(result.score, 4),
+        }
+        for result in results
+    ]
+
+
+def semantic_literature_evidence_score_map(
+    entry: dict[str, Any],
+    evidence_rows: list[dict[str, Any]],
+    query: str,
+) -> dict[str, float]:
+    records = literature_evidence_records(evidence_rows)
+    if not records:
+        return {}
+    semantic_query = " ".join([query, entry_query(entry)])
+    return {
+        str(result.record["record_id"]): result.score
+        for result in LocalSemanticIndex(records).search(semantic_query, k=len(records))
+    }
+
+
+def literature_evidence_records(evidence_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    records = []
+    for index, row in enumerate(evidence_rows):
+        if not isinstance(row, dict):
+            continue
+        record = dict(row)
+        record["record_id"] = literature_evidence_record_id(row, index)
+        record["search_text"] = " ".join(
+            str(row.get(field, ""))
+            for field in ("title", "finding", "query", "relevance_tags", "notes")
+        )
+        records.append(record)
+    return records
+
+
+def literature_evidence_record_id(row: dict[str, Any], index: int) -> str:
+    evidence_id = str(row.get("evidence_id", "")).strip()
+    return evidence_id or f"literature-evidence-{index}"
+
+
+def evidence_relevance_score(
+    row: dict[str, Any],
+    entry: dict[str, Any],
+    query: str,
+    semantic_score: float = 0.0,
+) -> float:
     tags = evidence_tags(row)
     signal_tags = evidence_signal_tags(entry)
     query_terms = query_relevance_terms(" ".join([query, entry_query(entry)]))
@@ -630,6 +727,7 @@ def evidence_relevance_score(row: dict[str, Any], entry: dict[str, Any], query: 
     confidence = CONFIDENCE_RANK.get(normalized_confidence(row.get("confidence", "")), 0)
     return (
         8.0 * len(tags & signal_tags)
+        + 10.0 * semantic_score
         + 2.0 * len(query_terms & row_terms)
         + 1.5 * confidence
         + 0.25 * len(tags)

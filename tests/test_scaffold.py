@@ -15,6 +15,7 @@ from lab_notebook_agent.agent import (
     notebook_context_matches,
     next_followup_experiment_id,
     run_workbook_agent,
+    select_literature_evidence_for_entry,
     selected_experiment_ids,
 )
 from lab_notebook_agent.daily_summary import build_daily_summary_report
@@ -58,7 +59,12 @@ from lab_notebook_agent.google_api import (
     run_live_google_setup,
 )
 from lab_notebook_agent.cli import main, parse_sheet_id_args
-from lab_notebook_agent.litscout import evidence_rows_to_values, litscout_works_to_evidence_rows
+from lab_notebook_agent.litscout import (
+    evidence_rows_to_values,
+    litscout_works_to_evidence_rows,
+    load_litscout_export,
+    semantic_litscout_work_matches,
+)
 from lab_notebook_agent.material_scaffold import (
     apply_material_scaffold_report_to_workbook,
     build_material_scaffold_report,
@@ -1295,6 +1301,24 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn("particle_size", rows[0]["relevance_tags"])
         self.assertEqual(11, len(evidence_rows_to_values(rows)[0]))
 
+    def test_litscout_loader_accepts_ndjson_exports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_path = Path(tmpdir) / "works.ndjson"
+            export_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"title": "Latex feed profile", "service": "openalex"}),
+                        json.dumps({"title": "Particle size distribution", "service": "crossref"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            works = load_litscout_export(export_path)
+
+            self.assertEqual(["Latex feed profile", "Particle size distribution"], [work["title"] for work in works])
+
     def test_litscout_export_tags_residual_monomer_and_pdi_evidence(self) -> None:
         works = [
             {
@@ -1368,6 +1392,107 @@ class ScaffoldTests(unittest.TestCase):
         self.assertNotIn("feed", rows[0]["relevance_tags"])
         self.assertIn("stability", rows[0]["relevance_tags"])
         self.assertEqual("high", rows[0]["confidence"])
+
+    def test_litscout_semantic_search_finds_relevant_exported_works(self) -> None:
+        works = [
+            {
+                "title": "Non-Ionic Surfactants for Biomedical Nanoparticle Stabilization",
+                "service": "openalex",
+                "year": 2022,
+                "cited_by_count": 400,
+                "concepts": [
+                    {"display_name": "Pulmonary surfactant"},
+                    {"display_name": "Nanoparticle"},
+                    {"display_name": "Biocompatibility"},
+                ],
+            },
+            {
+                "title": "Starved-feed latex nucleation in semibatch emulsion polymerization",
+                "service": "semantic_scholar",
+                "year": 2019,
+                "cited_by_count": 24,
+                "abstract": "Latex nucleation and monomer feed duration controlled particle distribution.",
+                "concepts": [
+                    {"display_name": "Emulsion polymerization"},
+                    {"display_name": "Latex"},
+                    {"display_name": "Nucleation"},
+                ],
+            },
+        ]
+
+        query = "emulsion polymerization latex nucleation monomer feed particle distribution"
+        matches = semantic_litscout_work_matches(works, query, k=2)
+        self.assertEqual("Starved-feed latex nucleation in semibatch emulsion polymerization", matches[0]["title"])
+
+        rows = litscout_works_to_evidence_rows(works, experiment_id="EP-010", query=query, limit=1)
+        self.assertEqual("Starved-feed latex nucleation in semibatch emulsion polymerization", rows[0]["title"])
+        self.assertIn("Local semantic rerank score", rows[0]["notes"])
+
+    def test_cli_litscout_semantic_search_reads_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_path = Path(tmpdir) / "litscout.json"
+            output_path = Path(tmpdir) / "matches.json"
+            export_path.write_text(
+                json_dumps(
+                    [
+                        {
+                            "title": "Biomedical nanoparticle stabilization",
+                            "concepts": [{"display_name": "Biocompatibility"}],
+                        },
+                        {
+                            "title": "Latex nucleation during emulsion polymerization feed",
+                            "abstract": "Monomer feed profile controlled particle distribution.",
+                            "concepts": [{"display_name": "Latex"}],
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            exit_code = main(
+                [
+                    "litscout-semantic-search",
+                    "--input",
+                    str(export_path),
+                    "emulsion polymerization latex monomer feed particle distribution",
+                    "-k",
+                    "1",
+                    "--output",
+                    str(output_path),
+                ]
+            )
+
+            matches = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("Latex nucleation during emulsion polymerization feed", matches[0]["title"])
+
+    def test_literature_evidence_selection_uses_semantic_similarity_for_next_experiment(self) -> None:
+        entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
+        evidence_rows = [
+            {
+                "evidence_id": "LIT-EP-001-001",
+                "title": "Non-Ionic Surfactants for Biomedical Nanoparticle Stabilization",
+                "finding": "Surfactants improved unrelated biomedical nanoparticle suspension stability.",
+                "relevance_tags": "surfactant",
+                "confidence": "high",
+            },
+            {
+                "evidence_id": "LIT-EP-001-002",
+                "title": "Coagulative nucleation and particle size distributions in emulsion polymerization",
+                "finding": "Latex feed profile reduced coagulum and narrowed particle size distributions.",
+                "relevance_tags": "",
+                "confidence": "low",
+            },
+        ]
+
+        selected = select_literature_evidence_for_entry(
+            entry,
+            evidence_rows,
+            query="emulsion polymerization particle size coagulum latex nucleation feed",
+            limit=1,
+        )
+
+        self.assertEqual("LIT-EP-001-002", selected[0]["evidence_id"])
 
     def test_recommendation_links_literature_evidence_ids(self) -> None:
         entry = load_entry(Path(__file__).parents[1] / "examples/emulsion_polymerization_entry.json")
@@ -1816,6 +1941,10 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
             self.assertEqual(2, len(calls))
             self.assertEqual(["litscout", "search", "multi"], calls[0][:3])
+            self.assertEqual(run["litscout_query"], calls[0][3])
+            self.assertIn("surfactant", calls[0][3])
+            self.assertEqual("LIT-EP-001-001", run["litscout_semantic_matches"][0]["evidence_id"])
+            self.assertGreater(run["litscout_semantic_matches"][0]["score"], 0)
 
     def test_agent_report_records_litscout_failure_without_suggestion(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

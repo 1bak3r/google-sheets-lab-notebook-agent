@@ -88,6 +88,20 @@ back into `Agent Suggestions`. Exported works are ranked against the experiment
 query before evidence rows are written, so exact process/topic matches such as
 emulsion polymerization, particle size, latex stability, feed, initiator, or
 surfactant outrank generic high-citation hits.
+The ranking now combines those process-aware checks with a local semantic index
+over LitScout titles, abstracts, summaries, concepts, and keywords. Agent runs
+also include `litscout_semantic_matches`, making the evidence handoff auditable
+before the next experiment is accepted.
+
+Search a LitScout export directly with the same semantic index:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli litscout-semantic-search \
+  --input artifacts/litscout-ep-001.json \
+  "emulsion polymerization latex nucleation feed particle distribution" \
+  -k 5 \
+  --output artifacts/litscout-ep-001-semantic-matches.json
+```
 
 Convert an exported LitScout session into rows for the `Literature Evidence`
 tab:
