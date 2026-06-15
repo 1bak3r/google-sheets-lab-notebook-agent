@@ -1,0 +1,138 @@
+{
+  "experiment": {
+    "experiment_id": "CSP-GD-001",
+    "date": "2026-06-15",
+    "project": "Core-Shell Particles Start-Up",
+    "process_type": "core-shell latex emulsion polymerization",
+    "objective": "Predict the next solketal-containing core-shell emulsion polymerization experiment from Google Drive core-shell records and LitScout literature context.",
+    "hypothesis": "A 50/50 butyl acrylate/solketal acrylate core using EP-324-style low-to-moderate redox flux plus a low branched non-APE nonionic surfactant component will reduce secondary nucleation while preserving growth to the 330-345 nm final target window.",
+    "operator": "",
+    "status": "planned",
+    "summary": "Run a solketal-containing version of the EP-324 low-flux design, adding a controlled Tergitol-type nonionic component and holding shell chemistry constant."
+  },
+  "formulation": [
+    {
+      "reagent_id": "BA",
+      "name": "Butyl acrylate",
+      "phase": "core monomer pre-emulsion",
+      "target_role": "core_monomer",
+      "parts_per_hundred_monomer": "49.85"
+    },
+    {
+      "reagent_id": "SKA",
+      "name": "Solketal acrylate",
+      "phase": "core monomer pre-emulsion",
+      "target_role": "core_monomer",
+      "parts_per_hundred_monomer": "49.85"
+    },
+    {
+      "reagent_id": "AMA",
+      "name": "Allyl methacrylate",
+      "phase": "core monomer pre-emulsion",
+      "target_role": "crosslinker",
+      "parts_per_hundred_monomer": "0.2"
+    },
+    {
+      "reagent_id": "BDDMA",
+      "name": "Butanediol dimethacrylate",
+      "phase": "core monomer pre-emulsion",
+      "target_role": "crosslinker",
+      "parts_per_hundred_monomer": "0.1"
+    },
+    {
+      "reagent_id": "TDM",
+      "name": "tert-Dodecyl mercaptan",
+      "phase": "core monomer pre-emulsion",
+      "target_role": "chain_transfer_agent",
+      "parts_per_hundred_monomer": "0.03"
+    },
+    {
+      "reagent_id": "AEROSOL-MA-80",
+      "name": "Aerosol MA-80",
+      "phase": "core aqueous pre-emulsion",
+      "target_role": "anionic_surfactant",
+      "parts_per_hundred_monomer": "1.6"
+    },
+    {
+      "reagent_id": "TERGITOL-DP35-40",
+      "name": "Tergitol-type branched non-APE fatty alcohol ether",
+      "phase": "core aqueous pre-emulsion",
+      "target_role": "nonionic_surfactant",
+      "parts_per_hundred_monomer": "0.3-0.5 active"
+    },
+    {
+      "reagent_id": "TBHP",
+      "name": "tert-Butyl hydroperoxide solution",
+      "phase": "core redox feed",
+      "target_role": "oxidant",
+      "concentration_wt_percent": "1.0 target",
+      "feed_duration_min": "210"
+    },
+    {
+      "reagent_id": "SFS",
+      "name": "Sodium formaldehyde sulfoxylate solution",
+      "phase": "core redox feed",
+      "target_role": "reductant",
+      "concentration_wt_percent": "1.5 target",
+      "feed_duration_min": "210"
+    },
+    {
+      "reagent_id": "MMA-EA-GMA-SHELL",
+      "name": "EP-324 shell plus functional shell monomers",
+      "phase": "shell and functional shell feeds",
+      "target_role": "shell_monomer_package",
+      "notes": "Keep EP-324 shell architecture fixed: MMA/EA shell followed by 50 pphm GMA functional shell."
+    }
+  ],
+  "observations": [
+    {
+      "timestamp": "planned",
+      "stage": "seed equilibration",
+      "temperature_C": "60 internal / 65 oil bath target",
+      "observation": "Start core feed only after the seed-shot temperature peak stabilizes; planning criterion is less than 1 C drift over 5 minutes."
+    },
+    {
+      "timestamp": "planned",
+      "stage": "core feed",
+      "feed_duration_min": "180 plus 30 minute redox hold",
+      "observation": "Use the EP-324 variable core feed ramp: 5%, 7%, 8%, 10%, 18%, 22%, 20%, 10%."
+    },
+    {
+      "timestamp": "planned",
+      "stage": "DLS checkpoints",
+      "observation": "Sample seed, 15, 60, 120, 180, and 210 minutes. Watch for a persistent small-particle mode below 120 nm."
+    }
+  ],
+  "results": [
+    {
+      "measurement_type": "predicted core DLS particle size",
+      "method": "planning estimate from EP-321/EP-324 worksheet family",
+      "value": "260-310",
+      "units": "nm",
+      "condition": "after core redox hold",
+      "quality_flag": "prediction"
+    },
+    {
+      "measurement_type": "predicted final DLS particle size",
+      "method": "planning estimate from EP-321/EP-324 worksheet family",
+      "value": "330-345",
+      "units": "nm",
+      "condition": "after functional shell",
+      "quality_flag": "prediction"
+    },
+    {
+      "measurement_type": "predicted colloidal outcome",
+      "method": "Drive source and LitScout-informed inference",
+      "value": "monomodal PSD with lower secondary nucleation risk than high-flux EP-323-style conditions",
+      "units": "",
+      "condition": "if premulsion remains stable and redox flux is recalculated to 2e-5 to 4e-5 mol/min/L",
+      "quality_flag": "medium confidence"
+    }
+  ],
+  "source_links": [
+    "https://docs.google.com/document/d/1FGv3JTiwZXqTrCjn75Uy4UhjyF2EfzfofoPOyTfElrc",
+    "https://drive.google.com/file/d/12mbguEfL3szzjdDMG_IoedWglg347ZkD",
+    "https://docs.google.com/spreadsheets/d/1zhdi6LkRNhQRitZjzd1mkN4kOrtrMKiQ2Wx4H_Hws0c/edit"
+  ],
+  "litscout_session": "labnotebook/core-shell-csp-google-drive"
+}
