@@ -56,6 +56,7 @@ from .materials import audit_experiment_materials
 from .notebook_search import search_notebook_tables
 from .planning import apply_plan_materialization_report_to_workbook, build_plan_materialization_report
 from .preflight import build_experiment_preflight_report
+from .prediction import build_litscout_prediction_report
 from .recommend import build_recommendation, load_entry
 from .recorded_daily_agent import build_snapshot_recorded_daily_agent_run, run_workbook_recorded_daily_agent
 from .schema import workbook_contract
@@ -237,6 +238,29 @@ def main(argv: list[str] | None = None) -> int:
     daily_agent_parser.add_argument("--report-output", help="Optional agent report JSON path.")
     daily_agent_parser.add_argument("--audit-output", help="Optional snapshot apply audit JSON path. Snapshot source only.")
     daily_agent_parser.add_argument("--batch-output", help="Optional Google Sheets batchUpdate request JSON path. Snapshot source only.")
+
+    predict_parser = subparsers.add_parser(
+        "predict-next-experiment",
+        help="Build an auditable LitScout-grounded next-experiment prediction and missing-skill report.",
+    )
+    predict_source = predict_parser.add_mutually_exclusive_group(required=True)
+    predict_source.add_argument("--workbook", help="Lab notebook .xlsx file.")
+    predict_source.add_argument("--snapshot", help="Google Sheets snapshot JSON file.")
+    predict_parser.add_argument("--experiment-id", action="append", default=[], help="Experiment ID to process. Repeatable.")
+    predict_parser.add_argument("--review-date", help="Only process experiments dated/logged on YYYY-MM-DD unless experiment IDs are provided.")
+    predict_parser.add_argument("--context-limit", type=int, default=5, help="Notebook search matches to include per run. Use 0 to disable.")
+    predict_parser.add_argument("--history-limit", type=int, default=5, help="Same-process prior experiments to include per run. Use 0 to disable.")
+    predict_parser.add_argument("--litscout-export", help="Optional LitScout JSON array export to convert into evidence rows.")
+    predict_parser.add_argument("--run-litscout", action="store_true", help="Run LitScout live for experiments that lack evidence.")
+    predict_parser.add_argument("--litscout-sources", default="openalex,crossref,semantic_scholar")
+    predict_parser.add_argument("--litscout-depth", default="light")
+    predict_parser.add_argument("--litscout-limit", type=int, default=8)
+    predict_parser.add_argument("--evidence-limit", type=int, default=3)
+    add_suggestion_confidence_floor_argument(predict_parser)
+    add_literature_requirement_arguments(predict_parser)
+    predict_parser.add_argument("--artifacts-dir", default="artifacts")
+    predict_parser.add_argument("--force", action="store_true", help="Generate a new prediction even if an open suggestion already exists.")
+    predict_parser.add_argument("--output", help="Optional prediction report JSON path. Defaults to stdout.")
 
     schema_parser = subparsers.add_parser("schema", help="Emit the workbook contract as JSON.")
     schema_parser.add_argument("--output", help="Optional output JSON path. Defaults to stdout.")
@@ -856,6 +880,32 @@ def main(argv: list[str] | None = None) -> int:
             report_output=args.report_output,
             audit_output=args.audit_output,
             batch_output=args.batch_output,
+        )
+        return 0
+    if args.command == "predict-next-experiment":
+        config = AgentRunConfig(
+            experiment_ids=tuple(args.experiment_id),
+            review_date=args.review_date,
+            context_limit=args.context_limit,
+            history_limit=args.history_limit,
+            evidence_limit=args.evidence_limit,
+            suggestion_confidence_floor=args.suggestion_confidence_floor,
+            require_literature_evidence=args.require_literature_evidence,
+            force=args.force,
+            litscout_export=args.litscout_export,
+            run_litscout=args.run_litscout,
+            litscout_sources=args.litscout_sources,
+            litscout_depth=args.litscout_depth,
+            litscout_limit=args.litscout_limit,
+            artifacts_dir=args.artifacts_dir,
+        )
+        if args.workbook:
+            tables = load_workbook_tables(args.workbook)
+        else:
+            tables = snapshot_to_tables(load_sheet_snapshot(args.snapshot))
+        write_or_print_json(
+            build_litscout_prediction_report(tables, config=config),
+            args.output,
         )
         return 0
     if args.command == "schema":

@@ -28,6 +28,7 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli scaffold-materials --workbook a
 PYTHONPATH=src python3 -m lab_notebook_agent.cli entry-from-workbook --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --output artifacts/ep-001-entry.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli suggest-workbook --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --output artifacts/ep-001-suggestion.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --litscout-export artifacts/litscout-ep-001.json --report-output artifacts/agent-run-ep-001.json
+PYTHONPATH=src python3 -m lab_notebook_agent.cli predict-next-experiment --workbook artifacts/lab_notebook_template.xlsx --experiment-id EP-001 --litscout-export artifacts/litscout-ep-001.json --output artifacts/litscout-prediction-ep-001.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run --workbook artifacts/lab_notebook_template.xlsx --review-date 2026-06-09 --litscout-export artifacts/litscout-ep-001.json --report-output artifacts/daily-review-2026-06-09.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli snapshot-from-workbook --workbook artifacts/lab_notebook_agent_applied.xlsx --sheet-id "Literature Evidence=1198739748" --sheet-id "Agent Suggestions=89758567" --output artifacts/live-sheet-snapshot-proxy.json
 PYTHONPATH=src python3 -m lab_notebook_agent.cli google-capture-plan --spreadsheet-id 1swzNI5YXruBwl0KgoG3b0hrmD12GopLf71YfKHs4AM8 --output artifacts/google-capture-plan.json
@@ -142,6 +143,28 @@ PYTHONPATH=src python3 -m lab_notebook_agent.cli agent-run \
 The generated LitScout command text and live `--run-litscout` invocation use the
 effective LitScout defaults from `Agent Config` unless the command line supplies
 non-default values.
+
+Use `predict-next-experiment` when the desired output is a standalone prediction
+audit rather than an appendable agent report:
+
+```bash
+PYTHONPATH=src python3 -m lab_notebook_agent.cli predict-next-experiment \
+  --workbook artifacts/lab_notebook_template.xlsx \
+  --experiment-id EP-001 \
+  --run-litscout \
+  --litscout-limit 8 \
+  --evidence-limit 3 \
+  --force \
+  --output artifacts/litscout-prediction-ep-001.json
+```
+
+The prediction report separates `evidence` from `inference`, carries the
+machine-readable proposed follow-up plan, lists go/no-go measurements and safety
+checks, and adds a `missing_skill_set` block for gaps such as unreviewed
+LitScout evidence, missing formulation quantities, reagent-property gaps, thin
+result metrics, missing safety review, or absent historical benchmarks. A
+generated safety reminder is not treated as approval; the report remains blocked
+until a reviewed safety check is recorded.
 
 Existing reviewed evidence is reused before a new LitScout search/export. The
 agent recognizes rows whose `evidence_id` uses the generated

@@ -77,6 +77,7 @@ from lab_notebook_agent.planning import (
     build_plan_materialization_report,
 )
 from lab_notebook_agent.preflight import build_experiment_preflight_report
+from lab_notebook_agent.prediction import build_litscout_prediction_report, prediction_from_agent_run
 from lab_notebook_agent.recommend import build_recommendation, load_entry
 from lab_notebook_agent.recorded_daily_agent import (
     build_recorded_daily_agent_run,
@@ -2099,6 +2100,133 @@ class ScaffoldTests(unittest.TestCase):
             self.assertEqual(1, report["summary"]["evidence_rows_to_append"])
             self.assertEqual(1, report["summary"]["suggestion_rows_to_append"])
             self.assertEqual(["LIT-EP-001-001"], run["append_agent_suggestions"][0]["linked_evidence_ids"])
+
+    def test_litscout_prediction_report_separates_evidence_inference_and_missing_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+
+            report = build_litscout_prediction_report(
+                load_workbook_tables(workbook_path),
+                AgentRunConfig(experiment_ids=("EP-001",), litscout_export=str(works_path)),
+            )
+
+            self.assertEqual("lab-notebook-litscout-prediction.v1", report["schema"])
+            prediction = report["predictions"][0]
+            self.assertEqual("blocked", prediction["status"])
+            self.assertEqual("EP-001-FUP-001", prediction["prediction"]["suggested_experiment_id"])
+            self.assertEqual(["LIT-EP-001-001"], prediction["evidence"]["selected_literature_evidence_ids"])
+            self.assertTrue(prediction["evidence"]["supporting_findings"])
+            self.assertIn("rationale", prediction["inference"])
+            self.assertIn("acceptance_criteria", prediction["go_no_go"])
+            gap_codes = {gap["code"] for gap in prediction["missing_skill_set"]}
+            self.assertIn("safety_review_required", gap_codes)
+            self.assertIn("litscout_evidence_unreviewed", gap_codes)
+            self.assertIn("formulation_quantities_missing", gap_codes)
+            self.assertIn("reagent_properties_missing", gap_codes)
+            self.assertIn("result_metrics_missing", gap_codes)
+            self.assertEqual(1, report["summary"]["prediction_count"])
+            self.assertEqual(1, report["summary"]["prediction_blocker_count"])
+
+    def test_litscout_prediction_report_blocks_missing_or_failed_safety_check(self) -> None:
+        base_suggestion = {
+            "suggestion_id": "SUG-SAFE-001",
+            "confidence": "medium",
+            "proposed_change": "Run a controlled follow-up.",
+            "expected_effect": "The next result should be attributable.",
+            "literature_context": {},
+            "proposed_experiment_plan": {
+                "suggested_experiment_id": "SAFE-001-FUP-001",
+                "process_type": "screening",
+                "acceptance_criteria": ["Safety review is complete."],
+            },
+        }
+        for safety_check, expected_code in (
+            ("", "safety_check_missing_or_failed"),
+            ("Safety review failed: do not run.", "safety_check_missing_or_failed"),
+        ):
+            run = {
+                "experiment_id": "SAFE-001",
+                "status": "ready",
+                "selected_literature_evidence_ids": ["LIT-SAFE-001"],
+                "append_agent_suggestions": [dict(base_suggestion, safety_check=safety_check)],
+            }
+
+            prediction = prediction_from_agent_run({"Results": []}, run, {"checks": []})
+
+            self.assertEqual("blocked", prediction["status"])
+            gap_codes = {gap["code"] for gap in prediction["missing_skill_set"]}
+            self.assertIn(expected_code, gap_codes)
+
+    def test_litscout_prediction_report_allows_approved_safety_check(self) -> None:
+        run = {
+            "experiment_id": "SAFE-002",
+            "status": "ready",
+            "selected_literature_evidence_ids": ["LIT-SAFE-002"],
+            "append_agent_suggestions": [
+                {
+                    "suggestion_id": "SUG-SAFE-002",
+                    "confidence": "medium",
+                    "proposed_change": "Run a controlled follow-up.",
+                    "expected_effect": "The next result should be attributable.",
+                    "safety_check": "Safety review passed: SDS reviewed and SOP reviewed before execution.",
+                    "historical_context": {"prior_experiment_count": 1},
+                    "literature_context": {},
+                    "proposed_experiment_plan": {
+                        "suggested_experiment_id": "SAFE-002-FUP-001",
+                        "process_type": "screening",
+                        "acceptance_criteria": ["Safety review is complete."],
+                    },
+                }
+            ],
+        }
+
+        prediction = prediction_from_agent_run({"Results": []}, run, {"checks": []})
+
+        self.assertEqual("predicted", prediction["status"])
+        self.assertEqual([], prediction["missing_skill_set"])
+
+    def test_litscout_prediction_report_blocks_when_grounding_is_required_but_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+
+            report = build_litscout_prediction_report(
+                load_workbook_tables(workbook_path),
+                AgentRunConfig(experiment_ids=("EP-001",), require_literature_evidence=True),
+            )
+
+            prediction = report["predictions"][0]
+            self.assertEqual("blocked", prediction["status"])
+            gap_codes = {gap["code"] for gap in prediction["missing_skill_set"]}
+            self.assertIn("suggestion_missing", gap_codes)
+            self.assertIn("literature_evidence_missing", gap_codes)
+            self.assertEqual(1, report["summary"]["prediction_blocker_count"])
+
+    def test_predict_next_experiment_cli_writes_prediction_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workbook_path = save_workbook(Path(tmpdir) / "template.xlsx")
+            works_path = write_fake_litscout_export(Path(tmpdir) / "works.json")
+            output_path = Path(tmpdir) / "prediction.json"
+
+            with patch("builtins.print"):
+                exit_code = main(
+                    [
+                        "predict-next-experiment",
+                        "--workbook",
+                        str(workbook_path),
+                        "--experiment-id",
+                        "EP-001",
+                        "--litscout-export",
+                        str(works_path),
+                        "--output",
+                        str(output_path),
+                    ]
+                )
+
+            report = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(0, exit_code)
+            self.assertEqual("lab-notebook-litscout-prediction.v1", report["schema"])
+            self.assertEqual("blocked", report["predictions"][0]["status"])
 
     def test_agent_run_cli_can_require_literature_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
